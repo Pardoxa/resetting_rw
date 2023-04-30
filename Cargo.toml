@@ -1,0 +1,18 @@
+[package]
+name = "resetting_rw"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+indicatif = {version = "0.17", features = ["improved_unicode", "rayon"]}
+rand_pcg = { version = "0.3.1", features = ["serde1"]}
+rand_distr = "0.4.3"
+rand = "0.8.5"
+glob = "^0.3.1"
+serde_json = "1.0.96"
+structopt = "^0.3.21"
+rayon = "^1.7.0"
+sampling = { git = "https://github.com/Pardoxa/sampling.git", rev = "b9b9cc5921ed580f3a5e423a0c14d64bf7f7d032" }
+serde = "1.0.160"
