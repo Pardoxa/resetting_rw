@@ -16,3 +16,4 @@ structopt = "^0.3.21"
 rayon = "^1.7.0"
 sampling = { git = "https://github.com/Pardoxa/sampling.git", rev = "b9b9cc5921ed580f3a5e423a0c14d64bf7f7d032" }
 serde = "1.0.160"
+humantime = "^2.1"
