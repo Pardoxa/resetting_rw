@@ -244,20 +244,15 @@ impl LdResettingWalker{
     {
         self.reset();
         assert!(self.x_pos < self.target_pos);
-        let mut idx = 0;
         let mut resets = 0;
+        let mut g_iter = self.noise.actual_noise.iter();
         'outer: loop {
             for _ in 0..self.reset_times.next(&mut self.rng)
             {
-                if idx > self.noise.actual_noise.len(){
-                    return None;
-                }
-                let gaus = self.noise.get(idx);
+                let gauss = *g_iter.next()?;
                 
-                let change = gaus * self.sqrt_step_size;
-                //println!("{change} {} {resets}", self.x_pos);
+                let change = gauss * self.sqrt_step_size;
                 self.x_pos += change;
-                idx += 1;
                 if self.x_pos >= self.target_pos{
                     break 'outer;
                 }
@@ -382,8 +377,9 @@ pub fn execute_wl_reset_pdf(opts: WlPdfOpts)
 
     let time_passed = humantime::format_duration(start.elapsed());
     let log_f = wl.log_f();
-    println!("time passed: {time_passed} log_f: {log_f}");
-    writeln!(buf, "#time passed: {time_passed} log_f: {log_f}").unwrap();
+    let total_steps = wl.step_counter();
+    println!("time passed: {time_passed} log_f: {log_f} total_steps {total_steps}");
+    writeln!(buf, "#time passed: {time_passed} log_f: {log_f} total_steps {total_steps}").unwrap();
 
 }
 
