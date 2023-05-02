@@ -262,6 +262,7 @@ impl LdResettingWalker{
                     break 'outer;
                 }
             }
+            self.x_pos = 0.0;
             resets += 1;
         }
         Some(resets)
@@ -335,11 +336,6 @@ pub fn execute_wl_reset_pdf(opts: WlPdfOpts)
 {
     let start = Instant::now();
     let (husk, json): (ResettingWalkerHusk, _) = parse(opts.json.clone());
-
-    let file = File::create("pdf.dat").unwrap();
-    let mut buf = BufWriter::new(file);
-
-    writeln!(buf, "#resets pdf").unwrap();
 
     let mut walker = LdResettingWalker::new(husk, &opts);
 
