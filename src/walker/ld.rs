@@ -80,11 +80,11 @@ impl Noise
     }
 
 
-    #[inline]
-    pub fn get(&self, index: usize) -> f64
-    {
-        unsafe{*self.actual_noise.get_unchecked(index)}
-    }
+    //#[inline]
+    //pub fn get(&self, index: usize) -> f64
+    //{
+    //    unsafe{*self.actual_noise.get_unchecked(index)}
+    //}
 
     #[inline]
     pub fn draw_new<R: Rng>(&mut self, index: usize, mut rng: R, sigma: f64) -> [f64; 2]
