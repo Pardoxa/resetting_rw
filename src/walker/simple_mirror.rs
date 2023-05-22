@@ -129,16 +129,19 @@ impl ResettingMirrorWalker{
 
 pub fn execute_mirror(opts: MirrorScanOpts)
 {
-    let (husk, _): (ResettingMirrorWalkerHusk, _) = parse(opts.json);
+    let (husk, json): (ResettingMirrorWalkerHusk, _) = parse(opts.json);
 
-    let name = format!("v{VERSION}_mirror_scan_p_{}.dat", opts.mirror_prob);
+    let samples = opts.samples;
+    let name = format!("v{VERSION}_mirror_scan_p_{}_samples{samples}.dat", opts.mirror_prob);
     println!("creating {name}");
 
     let file = File::create(name).unwrap();
     let mut buf = BufWriter::new(file);
 
+    misc::write_json(&mut buf, &json);
+    misc::write_commands(&mut buf).unwrap();
     writeln!(buf, "#lambda average_resets var_resets average_steps average_time var_time").unwrap();
-
+    let samples_per_thread = opts.samples / opts.threads;
     for i in 0..opts.lambda_samples{
 
         let lambda = opts.lambda_start + i as f64 *(opts.lambda_end - opts.lambda_start) / (opts.lambda_samples - 1) as f64;
@@ -159,7 +162,7 @@ pub fn execute_mirror(opts: MirrorScanOpts)
                 }
             ).collect();
 
-        let samples_per_thread = opts.samples / opts.threads;
+        
 
         let sum_resets = AtomicU64::new(0);
         let sum_time_steps = AtomicU64::new(0);

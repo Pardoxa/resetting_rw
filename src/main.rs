@@ -1,5 +1,6 @@
 mod walker;
 mod parse;
+mod misc;
 
 use std::path::PathBuf;
 
