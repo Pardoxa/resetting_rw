@@ -2,14 +2,14 @@ mod walker;
 mod parse;
 mod misc;
 
+use clap::Parser;
 use std::path::PathBuf;
 
-use structopt::StructOpt;
 
 
 fn main() {
     
-    let opts = Exec::from_args();
+    let opts = Exec::parse();
     match opts{
         Exec::ScanResetting(opts) => walker::execute(opts),
         Exec::SimpleResetPdf(opts) => walker::execute_simple_reset_pdf(opts),
@@ -20,7 +20,8 @@ fn main() {
     
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
+#[command(author, version, about)]
 pub enum Exec{
     ScanResetting(ScanOpts),
     ScanMirrorResetting(MirrorScanOpts),
@@ -29,95 +30,95 @@ pub enum Exec{
     WlResets(WlPdfOpts)
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 pub struct WlPdfOpts{
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub json: Option<PathBuf>,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub max_time_in_minutes: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub time_limit_of_sample: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub max_resets: u32
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 pub struct ResetPdfOpts{
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub json: Option<PathBuf>,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub samples: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub threads: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub max_resets: u32
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 pub struct MirrorResetPdfOpts{
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub json: Option<PathBuf>,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub samples: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub threads: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub max_resets: u32,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub mirror_prob: f64
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 pub struct ScanOpts{
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub json: Option<PathBuf>,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub samples: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub threads: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub lambda_start: f64,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub lambda_end: f64,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub lambda_samples: usize
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 pub struct MirrorScanOpts{
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub json: Option<PathBuf>,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub samples: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub threads: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub lambda_start: f64,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub lambda_end: f64,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub lambda_samples: usize,
 
-    #[structopt(long, short)]
+    #[arg(long, short)]
     pub mirror_prob: f64
 }
