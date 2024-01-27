@@ -130,9 +130,11 @@ impl ResettingUniWalker{
                     self.mirror_and_draw_next_mirror_time();
                 },
                 What::Mirror => {
+                    self.steps_until_next_reset -= self.steps_until_next_mirror;
                     self.mirror_and_draw_next_mirror_time();
                 },
                 What::Reset => {
+                    self.steps_until_next_mirror -= self.steps_until_next_reset;
                     self.reset_and_draw_next_reset_time();
                 }
             }
