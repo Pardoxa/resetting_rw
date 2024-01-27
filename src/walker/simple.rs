@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use rand_pcg::Pcg64;
 use rand_distr::Exp;
 use rayon::prelude::{IntoParallelRefMutIterator, ParallelIterator};
-use sampling::{AtomicHistU32};
+use sampling::AtomicHistU32;
 use std::io::Write;
 use serde::{Serialize, Deserialize};
 use rand::{SeedableRng, distributions::Distribution};

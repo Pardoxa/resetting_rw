@@ -15,7 +15,8 @@ fn main() {
         Exec::SimpleResetPdf(opts) => walker::execute_simple_reset_pdf(opts),
         Exec::WlResets(opts) => walker::execute_wl_reset_pdf(opts),
         Exec::ScanMirrorResetting(opts) => walker::execute_mirror(opts),
-        Exec::SimpleMirrorResetPdf(opts) => walker::execute_simple_mirror_reset_pdf(opts)
+        Exec::SimpleMirrorResetPdf(opts) => walker::execute_simple_mirror_reset_pdf(opts),
+        Exec::ScanUniMirrorReset(opts) => walker::execute_uni(opts)
     }
     
 }
@@ -27,7 +28,9 @@ pub enum Exec{
     ScanMirrorResetting(MirrorScanOpts),
     SimpleResetPdf(ResetPdfOpts),
     SimpleMirrorResetPdf(MirrorResetPdfOpts),
-    WlResets(WlPdfOpts)
+    WlResets(WlPdfOpts),
+    #[clap(visible_alias="uni")]
+    ScanUniMirrorReset(UniScanOpts)
 }
 
 #[derive(Parser)]
@@ -97,6 +100,30 @@ pub struct ScanOpts{
 
     #[arg(long, short)]
     pub lambda_samples: usize
+}
+
+#[derive(Parser)]
+pub struct UniScanOpts{
+    #[arg(long, short, requires("out"))]
+    pub json: Option<PathBuf>,
+
+    #[arg(long, short)]
+    pub samples: usize,
+
+    #[arg(long, short)]
+    pub threads: usize,
+
+    #[arg(long, short)]
+    pub lambda_start: f64,
+
+    #[arg(long, short)]
+    pub lambda_end: f64,
+
+    #[arg(long, short)]
+    pub lambda_samples: usize,
+
+    #[arg(long, short)]
+    pub out: Option<PathBuf>
 }
 
 #[derive(Parser)]
