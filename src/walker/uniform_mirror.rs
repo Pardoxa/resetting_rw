@@ -1,4 +1,6 @@
-use std::cmp::Ordering;
+use std::num::NonZeroUsize;
+use std::sync::Mutex;
+use std::{cmp::Ordering, path::Path};
 use std::sync::atomic::AtomicU64;
 
 use rand_pcg::Pcg64;
@@ -36,6 +38,98 @@ impl Default for ResettingUniWalkerHusk {
             mirror_lambda: 1.0,
             uni_delta_2: 0.1,
             uni_mid: -1.0
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MirroringWalkerHistJob{
+    pub rng_seed: u64,
+    pub uni_mid: f64,
+    pub uni_delta_2: f64,
+    pub mirror_lambda: f64,
+    pub step_size: f64,
+    pub hist_positions: Vec<f64>,
+    pub samples: NonZeroUsize
+}
+
+impl MirroringWalkerHistJob{
+
+    pub fn get_times(&self) -> (Vec<u64>, Vec<u64>)
+    {
+        let times: Vec<_> = self.hist_positions
+            .iter()
+            .map(
+                |val|
+                {
+                    (val / self.step_size).round() as u64
+                }
+            ).collect();
+
+        let mut sum = 0;
+        let step_helper: Vec<_> = times.iter()
+            .map(
+                |time|
+                {
+                    let s = time - sum;
+                    sum += s;
+                    s
+                }
+            ).collect();
+        (times, step_helper)
+    }
+
+    fn get_walkers(&self) -> Vec<ResettingUniWalker>{
+        let mut seed_rng = Pcg64::seed_from_u64(self.rng_seed);
+
+        (0..self.samples.get())
+            .map(
+                |_|
+                {
+                    let rng = Pcg64::from_rng(&mut seed_rng).unwrap();
+                    self.get_walker(rng)
+                }
+            ).collect()
+    }
+
+    fn get_walker(&self, rng: Pcg64) -> ResettingUniWalker
+    {
+
+        let reset_distr = Exp::<f64>::new(1.0).unwrap();
+        let mirror_time_distr = Exp::new(self.mirror_lambda).unwrap();
+        let low = self.uni_mid - self.uni_delta_2;
+        let high = self.uni_mid + self.uni_delta_2;
+        let mirror_dist = Uniform::new_inclusive(low, high);
+        ResettingUniWalker { 
+            rng, 
+            x_pos: 0.0, 
+            steps_until_next_mirror: 0,
+            mirrors_performed: 0,
+            reset_distr, 
+            mirror_time_distr,
+            mirror_dist,
+            reset_lambda: 1.0,
+            mirror_lambda: self.mirror_lambda, 
+            time_steps_performed: 0, 
+            target_pos: 0.0, 
+            resets_performed: 0,
+            steps_until_next_reset: 0,
+            sqrt_step_size: self.step_size.sqrt(),
+            step_size: self.step_size
+        }
+    }
+}
+
+impl Default for MirroringWalkerHistJob {
+    fn default() -> Self {
+        Self { 
+            rng_seed: 123, 
+            step_size: 0.00025,
+            mirror_lambda: 1.0,
+            uni_delta_2: 0.1,
+            uni_mid: -1.0,
+            hist_positions: vec![1.0, 2.0],
+            samples: NonZeroUsize::new(1).unwrap()
         }
     }
 }
@@ -269,3 +363,42 @@ pub fn execute_uni(opts: UniScanOpts)
     }
 }
 
+pub fn exec_mirroring_hists<P>(path: Option<P>)
+where P: AsRef<Path>
+{
+    let opt: MirroringWalkerHistJob = parse_and_add_to_global(path);
+
+    let mut walkers = opt.get_walkers();
+
+    let (times, step_helper) = opt.get_times();
+
+    let writer: Vec<_> = times.iter()
+        .map(
+            |time|
+            {
+                let name = format!("test_{time}.dat");
+                let buf = create_buf_with_command_and_version(name);
+                Mutex::new(buf)
+            }
+        ).collect();
+
+    walkers.par_iter_mut()
+        .for_each(
+            |walker|
+            {
+                step_helper
+                    .iter()
+                    .zip(writer.iter())
+                    .for_each(
+                        |(&steps, writer)|
+                        {
+                            walker.only_mirror_steps(steps);
+                            let pos = walker.x_pos;
+                            let mut lock = writer.lock().unwrap();
+                            writeln!(lock, "{pos:e}").unwrap();
+                            drop(lock);
+                        }
+                    )
+            }
+        )
+}

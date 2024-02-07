@@ -11,7 +11,16 @@ pub enum Exec{
     SimpleMirrorResetPdf(MirrorResetPdfOpts),
     WlResets(WlPdfOpts),
     #[clap(visible_alias="uni")]
-    ScanUniMirrorReset(UniScanOpts)
+    ScanUniMirrorReset(UniScanOpts),
+    /// Create histograms only mirroring
+    MirrorHists(MirrorHists)
+}
+
+#[derive(Parser)]
+pub struct MirrorHists{
+    #[arg(long, short)]
+    /// Path to json
+    pub json_path: Option<Utf8PathBuf>
 }
 
 #[derive(Parser)]

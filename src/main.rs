@@ -18,7 +18,10 @@ fn main() {
         Exec::WlResets(opts) => walker::execute_wl_reset_pdf(opts),
         Exec::ScanMirrorResetting(opts) => walker::execute_mirror(opts),
         Exec::SimpleMirrorResetPdf(opts) => walker::execute_simple_mirror_reset_pdf(opts),
-        Exec::ScanUniMirrorReset(opts) => walker::execute_uni(opts)
+        Exec::ScanUniMirrorReset(opts) => walker::execute_uni(opts),
+        Exec::MirrorHists(opt) => {
+            walker::exec_mirroring_hists(opt.json_path.as_ref())
+        }
     }
     
 }
