@@ -1,6 +1,6 @@
 use std::io::{BufWriter, Write};
 use std::sync::RwLock;
-use std::fs::File;
+use fs_err::File;
 use std::path::Path;
 use std::fmt::Display;
 use serde_json::Value;
@@ -16,12 +16,10 @@ pub fn write_json<W: Write>(mut writer: W, json: &Value)
 }
 
 
-
-
 pub fn create_buf<P>(path: P) -> BufWriter<File>
 where P: AsRef<Path>
 {
-    let file = File::create(path)
+    let file = File::create(path.as_ref())
         .expect("Unable to create file");
     BufWriter::new(file)
 }

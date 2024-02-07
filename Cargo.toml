@@ -17,6 +17,7 @@ sampling = { git = "https://github.com/Pardoxa/sampling.git", rev = "b9b9cc5921e
 serde = "^1.0.195"
 humantime = "^2.1"
 clap = {version = "^4.4.18", features=["derive", "cargo", "color", "help"]}
+fs-err = "2.11.0"
 
 [profile.release]
 strip = true  # Automatically strip symbols from the binary.
