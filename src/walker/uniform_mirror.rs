@@ -50,12 +50,12 @@ pub struct ResettingUniWalker{
     mirror_dist: Uniform<f64>,
     reset_lambda: f64,
     mirror_lambda: f64,
-    time_steps_performed: u32,
+    time_steps_performed: u64,
     target_pos: f64,
-    resets_performed: u32,
-    mirrors_performed: u32,
-    steps_until_next_reset: u32,
-    steps_until_next_mirror: u32,
+    resets_performed: u64,
+    mirrors_performed: u64,
+    steps_until_next_reset: u64,
+    steps_until_next_mirror: u64,
     step_size: f64,
     sqrt_step_size: f64
 }
@@ -71,7 +71,7 @@ impl ResettingUniWalker{
     pub fn reset_and_draw_next_reset_time(&mut self)
     {
         let reset_time = self.reset_distr.sample(&mut self.rng);
-        let steps = (reset_time / self.step_size).floor() as u32;
+        let steps = (reset_time / self.step_size).floor() as u64;
         self.steps_until_next_reset = steps;
         self.resets_performed += 1;
         self.x_pos = 0.0;
@@ -80,7 +80,7 @@ impl ResettingUniWalker{
     pub fn mirror_and_draw_next_mirror_time(&mut self)
     {
         let mirror_time = self.mirror_time_distr.sample(&mut self.rng);
-        let steps = (mirror_time / self.sqrt_step_size).floor() as u32;
+        let steps = (mirror_time / self.sqrt_step_size).floor() as u64;
         self.steps_until_next_mirror = steps;
         self.mirrors_performed += 1; 
         let mirror_factor = self.mirror_dist.sample(&mut self.rng);
@@ -95,6 +95,28 @@ impl ResettingUniWalker{
         self.resets_performed = 0;
         self.x_pos = 0.0;
         self.time_steps_performed = 0;
+    }
+
+    /// Dont forget that you might need to call self.reset(); before calling this,
+    /// depends on what you are doing
+    pub fn only_mirror_steps(&mut self, mut steps: u64)
+    {
+        loop{
+            let s = steps.min(self.steps_until_next_mirror);
+            for _ in 0..s
+            {
+                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * self.sqrt_step_size;
+            }
+            self.time_steps_performed += s;
+            steps -= s;
+            self.steps_until_next_mirror -= s;
+            if self.steps_until_next_mirror == 0{
+                self.mirror_and_draw_next_mirror_time();
+            }
+            if steps == 0{
+                break;
+            }
+        }
     }
 
     pub fn walk_until_found(&mut self)
@@ -115,15 +137,16 @@ impl ResettingUniWalker{
                     (self.steps_until_next_reset, What::Reset)
                 }
             };
-            for _ in 0..steps
+            for i in 0..steps
             {
                 let old = self.x_pos;
                 self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * self.sqrt_step_size;
-                self.time_steps_performed += 1;
                 if (old..=self.x_pos).contains(&self.target_pos){
+                    self.time_steps_performed += i;
                     break 'outer;
                 }
             }
+            self.time_steps_performed += steps;
             match what{
                 What::Both => {
                     self.reset_and_draw_next_reset_time();
@@ -224,9 +247,9 @@ pub fn execute_uni(opts: UniScanOpts)
                         walker.walk_until_found();
                         let resets = walker.resets_performed;
                         let time_steps = walker.time_steps_performed;
-                        sum_resets.fetch_add(resets as u64, RELAXED);
-                        sum_time_steps.fetch_add(time_steps as u64, RELAXED);
-                        sum_mirrors.fetch_add(walker.mirrors_performed as u64, RELAXED);
+                        sum_resets.fetch_add(resets, RELAXED);
+                        sum_time_steps.fetch_add(time_steps, RELAXED);
+                        sum_mirrors.fetch_add(walker.mirrors_performed, RELAXED);
                     }
                 }
             );
