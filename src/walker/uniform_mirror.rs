@@ -174,7 +174,7 @@ impl ResettingUniWalker{
     pub fn mirror_and_draw_next_mirror_time(&mut self)
     {
         let mirror_time = self.mirror_time_distr.sample(&mut self.rng);
-        let steps = (mirror_time / self.sqrt_step_size).floor() as u64;
+        let steps = (mirror_time / self.step_size).floor() as u64;
         self.steps_until_next_mirror = steps;
         self.mirrors_performed += 1; 
         let mirror_factor = self.mirror_dist.sample(&mut self.rng);
