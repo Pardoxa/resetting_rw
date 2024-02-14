@@ -12,6 +12,9 @@ pub enum Exec{
     WlResets(WlPdfOpts),
     #[clap(visible_alias="uni")]
     ScanUniMirrorReset(UniScanOpts),
+    #[clap(visible_alias="unim")]
+    /// Scan mirror lambda, use only mirrors
+    ScanUniMirror(UniScanOpts),
     /// Create histograms only mirroring
     MirrorHists(MirrorHists)
 }

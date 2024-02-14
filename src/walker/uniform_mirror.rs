@@ -260,6 +260,30 @@ impl ResettingUniWalker{
             }
         }
     }
+
+    pub fn mirror_until_found(&mut self)
+    {
+        self.reset();
+        assert!(self.x_pos < self.target_pos);
+        
+        'outer: loop {
+            let steps = self.steps_until_next_mirror;
+            for i in 0..steps
+            {
+                let old = self.x_pos;
+                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * self.sqrt_step_size;
+                if (old..=self.x_pos).contains(&self.target_pos){
+                    self.time_steps_performed += i;
+                    break 'outer;
+                }
+            }
+            self.time_steps_performed += steps;
+            self.mirror_and_draw_next_mirror_time();
+            if self.target_pos == self.x_pos{
+                break;
+            }
+        }
+    }
 }
 
 impl From<ResettingUniWalkerHusk> for ResettingUniWalker
@@ -294,6 +318,17 @@ impl From<ResettingUniWalkerHusk> for ResettingUniWalker
 }
 
 pub fn execute_uni(opts: UniScanOpts)
+{
+    execute_uni_helper(opts, ResettingUniWalker::walk_until_found);
+}
+
+pub fn execute_uni_only_mirror(opts: UniScanOpts)
+{
+    execute_uni_helper(opts, ResettingUniWalker::mirror_until_found);
+}
+
+pub fn execute_uni_helper<F>(opts: UniScanOpts, fun: F)
+where F: Fn(&mut ResettingUniWalker) + Sync
 {
     let husk: ResettingUniWalkerHusk = parse_and_add_to_global(opts.json);
 
@@ -338,7 +373,7 @@ pub fn execute_uni(opts: UniScanOpts)
                 |walker|
                 {
                     for _ in 0..samples_per_thread{
-                        walker.walk_until_found();
+                        fun(walker);
                         let resets = walker.resets_performed;
                         let time_steps = walker.time_steps_performed;
                         sum_resets.fetch_add(resets, RELAXED);
