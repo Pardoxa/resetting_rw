@@ -1,3 +1,4 @@
+use std::f64::consts::SQRT_2;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::{cmp::Ordering, path::Path};
@@ -217,7 +218,8 @@ impl ResettingUniWalker{
     {
         self.reset();
         assert!(self.x_pos < self.target_pos);
-        
+        // ACHTUNG!!! SQRT2 added
+        let sq_st = self.sqrt_step_size * SQRT_2;
         'outer: loop {
             let (steps, what) = match self.steps_until_next_mirror.cmp(&self.steps_until_next_reset)
             {
@@ -231,10 +233,12 @@ impl ResettingUniWalker{
                     (self.steps_until_next_reset, What::Reset)
                 }
             };
+            
             for i in 0..steps
             {
                 let old = self.x_pos;
-                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * self.sqrt_step_size;
+                
+                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * sq_st;
                 if (old..=self.x_pos).contains(&self.target_pos){
                     self.time_steps_performed += i;
                     break 'outer;
@@ -265,13 +269,15 @@ impl ResettingUniWalker{
     {
         self.reset();
         assert!(self.x_pos < self.target_pos);
-        
+        // ACHTUNG!!! SQRT2 added
+        let sq_st = SQRT_2 * self.sqrt_step_size;
         'outer: loop {
             let steps = self.steps_until_next_mirror;
             for i in 0..steps
             {
                 let old = self.x_pos;
-                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * self.sqrt_step_size;
+                
+                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * sq_st;
                 if (old..=self.x_pos).contains(&self.target_pos){
                     self.time_steps_performed += i;
                     break 'outer;

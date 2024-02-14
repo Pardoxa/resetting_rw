@@ -1,3 +1,4 @@
+use std::f64::consts::SQRT_2;
 use std::fs::File;
 use std::io::BufWriter;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -74,11 +75,11 @@ impl ResettingWalker{
     {
         self.reset();
         assert!(self.x_pos < self.target_pos);
-        
+        let sq = self.sqrt_step_size * SQRT_2;
         'outer: loop {
             for _ in 0..self.steps_until_next_reset
             {
-                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * self.sqrt_step_size;
+                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * sq;
                 self.time_steps_performed += 1;
                 if self.x_pos >= self.target_pos{
                     break 'outer;
