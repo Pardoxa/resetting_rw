@@ -66,6 +66,7 @@ impl SyncQueue<usize>
                 break;
             }
         }
+        assert_eq!(samples, queue.iter().sum::<usize>());
         Self{queue: Mutex::new(queue)}
     }
 }
