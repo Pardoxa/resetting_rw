@@ -3,7 +3,7 @@ use clap::Parser;
 mod walker;
 mod parse;
 mod misc;
-
+mod sync_queue;
 
 mod config;
 pub use config::*;

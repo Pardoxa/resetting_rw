@@ -276,7 +276,6 @@ impl ResettingUniWalker{
             for i in 0..steps
             {
                 let old = self.x_pos;
-                
                 self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * sq_st;
                 if (old..=self.x_pos).contains(&self.target_pos){
                     self.time_steps_performed += i;
@@ -407,6 +406,13 @@ where F: Fn(&mut ResettingUniWalker) + Sync
 pub fn exec_mirroring_hists<P>(path: Option<P>)
 where P: AsRef<Path>
 {
+    exec_hist_helper(path, ResettingUniWalker::only_mirror_steps)
+}
+
+fn exec_hist_helper<P, F>(path: Option<P>, fun: F)
+where P: AsRef<Path>,
+    F: Fn(&mut ResettingUniWalker, u64) + Sync
+{
     let opt: MirroringWalkerHistJob = parse_and_add_to_global(path);
 
     let mut walkers = opt.get_walkers();
@@ -433,7 +439,8 @@ where P: AsRef<Path>
                     .for_each(
                         |(&steps, writer)|
                         {
-                            walker.only_mirror_steps(steps);
+                            fun(walker, steps);
+                            
                             let pos = walker.x_pos;
                             let mut lock = writer.lock().unwrap();
                             writeln!(lock, "{pos:e}").unwrap();
