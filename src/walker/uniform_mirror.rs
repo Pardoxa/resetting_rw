@@ -1,3 +1,4 @@
+use crate::sync_queue::*;
 use std::f64::consts::SQRT_2;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
@@ -347,6 +348,8 @@ where F: Fn(&mut ResettingUniWalker) + Sync
     ];
     write_slice_head(&mut buf, header).unwrap();
 
+    let step_size = husk.step_size;
+
     for i in 0..opts.lambda_samples{
 
         let lambda = opts.lambda_start + i as f64 *(opts.lambda_end - opts.lambda_start) / (opts.lambda_samples - 1) as f64;
@@ -356,47 +359,66 @@ where F: Fn(&mut ResettingUniWalker) + Sync
 
         let mut walker: ResettingUniWalker = husk.into(); 
 
-        let mut thread_walker: Vec<_> = (0..opts.threads)
-            .map(
-                |_|
-                {
-                    let mut w = walker.clone();
-                    w.rng = Pcg64::from_rng(&mut walker.rng).unwrap();
-                    w.reset();
-                    w
-                }
-            ).collect();
+        let queue = SyncQueue::create_work_queue(
+            opts.samples, 
+            NonZeroUsize::new(opts.threads.get() * 3).unwrap()
+        );
 
-        let samples_per_thread = opts.samples / opts.threads;
+        let queue = queue.map(
+            |amount|
+            {
+                let mut w = walker.clone();
+                w.rng = Pcg64::from_rng(&mut walker.rng).unwrap();
+                w.reset();
+                (w, amount)
+            }
+        );
+
+        let samples_per_packet = (opts.samples / (opts.threads.get() * 12)).max(1);
 
         let sum_resets = AtomicU64::new(0);
         let sum_mirrors = AtomicU64::new(0);
         let sum_time_steps = AtomicU64::new(0);
 
-        thread_walker.par_iter_mut()
+        (0..opts.threads.get())
+            .into_par_iter()
             .for_each(
-                |walker|
+                |_|
                 {
-                    for _ in 0..samples_per_thread{
-                        fun(walker);
-                        let resets = walker.resets_performed;
-                        let time_steps = walker.time_steps_performed;
-                        sum_resets.fetch_add(resets, RELAXED);
-                        sum_time_steps.fetch_add(time_steps, RELAXED);
-                        sum_mirrors.fetch_add(walker.mirrors_performed, RELAXED);
+                    while let Some((mut walker, amount)) = queue.pop() {
+                        let work = amount.min(samples_per_packet);
+                        let left = amount - work;
+                        let mut tmp_sum_resets = 0;
+                        let mut tmp_sum_time_steps = 0;
+                        let mut tmp_sum_mirrors = 0;
+                        for _ in 0..work{
+                            fun(&mut walker);
+                            tmp_sum_resets += walker.resets_performed;
+                            tmp_sum_time_steps += walker.time_steps_performed;
+                            tmp_sum_mirrors += walker.mirrors_performed;
+                        }
+                        sum_resets.fetch_add(tmp_sum_resets, RELAXED);
+                        sum_time_steps.fetch_add(tmp_sum_time_steps, RELAXED);
+                        sum_mirrors.fetch_add(tmp_sum_mirrors, RELAXED);
+                        if left > 0{
+                            queue.push(
+                                (walker, left)
+                            );
+                        }
                     }
                 }
             );
+
 
         let sum_resets = sum_resets.into_inner();
         let sum_time_steps = sum_time_steps.into_inner();
         let sum_mirrors = sum_mirrors.into_inner();
 
-        let total_samples = opts.threads * samples_per_thread;
+        let total_samples = opts.samples;
 
         let average_resets = sum_resets as f64 / total_samples as f64;
         let average_steps = sum_time_steps as f64 / total_samples as f64;
-        let average_time = average_steps * thread_walker[0].step_size;
+        let average_time = average_steps * step_size;
         let average_mirrors = sum_mirrors as f64 / total_samples as f64;
         println!("lambda {lambda} average resets: {average_resets}, average_steps {average_steps} average_time {average_time}");
         writeln!(buf, "{lambda} {average_resets} {average_steps} {average_mirrors} {average_time}").unwrap();

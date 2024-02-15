@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use clap::Parser;
 use camino::Utf8PathBuf;
 
@@ -104,7 +106,7 @@ pub struct UniScanOpts{
     pub samples: usize,
 
     #[arg(long, short)]
-    pub threads: usize,
+    pub threads: NonZeroUsize,
 
     #[arg(long, short)]
     pub lambda_start: f64,
