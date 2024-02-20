@@ -6,6 +6,9 @@ use std::fmt::Display;
 use serde_json::Value;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const GIT_HASH: &str = env!("GIT_HASH");
+pub const BUILD_TIME_CHRONO: &str = env!("BUILD_TIME_CHRONO");
+
 pub static GLOBAL_ADDITIONS: RwLock<Option<String>> = RwLock::new(None);
 
 pub fn write_json<W: Write>(mut writer: W, json: &Value)
@@ -37,7 +40,7 @@ pub fn write_commands<W: Write>(mut w: W) -> std::io::Result<()>
 pub fn write_commands_and_version<W: Write>(mut w: W) -> std::io::Result<()>
 {
     writeln!(w, "# {VERSION}")?;
-    writeln!(w, "# Git Hash: {} Compile-time: {}", env!("GIT_HASH"), env!("BUILD_TIME_CHRONO"))?;
+    writeln!(w, "# Git Hash: {GIT_HASH} Compile-time: {BUILD_TIME_CHRONO}")?;
     let l = GLOBAL_ADDITIONS.read().unwrap();
     if let Some(add) = l.as_deref(){
         writeln!(w, "# {add}")?;
