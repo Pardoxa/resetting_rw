@@ -338,13 +338,19 @@ impl ResettingUniWalker{
         ) -> f64
         {
             let abs_dist = (target-pos).abs();
-            if abs_dist >= 0.1
+            //#[allow(clippy::suspicious_else_formatting)]
+            let exp = if abs_dist >= 0.1
             {
-                1e-5
-            } else {
-                let exp = abs_dist.mul_add(40.0, -9.0);
-                10.0_f64.powf(exp)
+                return 1e-5;
             }
+            else if abs_dist <= 0.01 
+            {
+                abs_dist.mul_add(340.0, -12.0)
+            } 
+            else {
+                abs_dist.mul_add(40.0, -9.0)
+            };
+            10.0_f64.powf(exp)
         }
 
         self.reset();
@@ -412,33 +418,35 @@ impl From<ResettingUniWalkerHusk> for ResettingUniWalker
 
 pub fn execute_uni(opts: UniScanOpts)
 {
-    execute_uni_helper(opts, ResettingUniWalker::walk_until_found);
+    execute_uni_helper(opts, ResettingUniWalker::walk_until_found, true);
 }
 
 pub fn execute_uni_only_mirror(opts: UniScanOpts)
 {
-    execute_uni_helper(opts, ResettingUniWalker::mirror_until_found);
+    execute_uni_helper(opts, ResettingUniWalker::mirror_until_found, true);
 }
 
 pub fn execute_uni_only_mirror_adaptive(opts: UniScanOpts)
 {
-    execute_uni_helper(opts, ResettingUniWalker::adaptive_mirror_until_found);
+    execute_uni_helper(opts, ResettingUniWalker::adaptive_mirror_until_found, false);
 }
 
-pub fn execute_uni_helper<F>(opts: UniScanOpts, fun: F)
+pub fn execute_uni_helper<F>(opts: UniScanOpts, fun: F, const_step_size: bool)
 where F: Sync + Fn(&mut ResettingUniWalker) -> f64
 {
     let husk: ResettingUniWalkerHusk = parse_and_add_to_global(opts.json);
 
     let mut buf = create_buf_with_command_and_version(opts.out.as_deref().unwrap());
-    let header = [
+    let mut header = vec![
         "lambda",
         "average_resets",
         "average_steps",
         "average_mirrors",
-        "average_time",
-        "interpolated_average_time"
+        "average_time"
     ];
+    if const_step_size{
+        header.push("interpolated_average_time");
+    }
     write_slice_head(&mut buf, header).unwrap();
 
     let step_size = husk.step_size;
@@ -479,13 +487,14 @@ where F: Sync + Fn(&mut ResettingUniWalker) -> f64
             .for_each(
                 |_|
                 {
+                    let mut tmp_time_sum = 0.0;
+                    let mut tmp_sum_resets = 0;
+                    let mut tmp_sum_time_steps = 0;
+                    let mut tmp_sum_mirrors = 0;
                     while let Some((mut walker, amount)) = queue.pop() {
                         let work = amount.min(samples_per_packet);
                         let left = amount - work;
-                        let mut tmp_sum_resets = 0;
-                        let mut tmp_sum_time_steps = 0;
-                        let mut tmp_sum_mirrors = 0;
-                        let mut tmp_time_sum = 0.0;
+
                         for _ in 0..work{
                             let time = fun(&mut walker);
                             tmp_time_sum += time;
@@ -498,14 +507,13 @@ where F: Sync + Fn(&mut ResettingUniWalker) -> f64
                                 (walker, left)
                             );
                         }
-                        sum_resets.fetch_add(tmp_sum_resets, RELAXED);
-                        sum_time_steps.fetch_add(tmp_sum_time_steps, RELAXED);
-                        sum_mirrors.fetch_add(tmp_sum_mirrors, RELAXED);
-                        let mut time_sum_lock = sum_time.lock().unwrap();
-                        *time_sum_lock += tmp_time_sum;
-                        drop(time_sum_lock);
-                        
                     }
+                    sum_resets.fetch_add(tmp_sum_resets, RELAXED);
+                    sum_time_steps.fetch_add(tmp_sum_time_steps, RELAXED);
+                    sum_mirrors.fetch_add(tmp_sum_mirrors, RELAXED);
+                    let mut time_sum_lock = sum_time.lock().unwrap();
+                    *time_sum_lock += tmp_time_sum;
+                    drop(time_sum_lock);
                 }
             );
 
@@ -520,8 +528,13 @@ where F: Sync + Fn(&mut ResettingUniWalker) -> f64
         let average_steps = sum_time_steps as f64 / total_samples;
         let average_time = average_steps * step_size;
         let average_mirrors = sum_mirrors as f64 / total_samples;
-        println!("lambda {lambda} average resets: {average_resets}, average_steps {average_steps} average_time {average_time}");
-        writeln!(buf, "{lambda} {average_resets} {average_steps} {average_mirrors} {average_time} {average_time_interpol}").unwrap();
+        if const_step_size{
+            println!("lambda {lambda} average resets: {average_resets}, average_steps {average_steps} average_time {average_time} interp_time {average_time_interpol}");
+            writeln!(buf, "{lambda} {average_resets} {average_steps} {average_mirrors} {average_time} {average_time_interpol}")
+        } else {
+            println!("lambda {lambda} average resets: {average_resets}, average_steps {average_steps} average_time {average_time_interpol}");
+            writeln!(buf, "{lambda} {average_resets} {average_steps} {average_mirrors} {average_time_interpol}")
+        }.unwrap();
     }
 }
 
