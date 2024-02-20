@@ -12,7 +12,6 @@ def get_git_hash():
         this_files_path = os.path.realpath(__file__)
         # Extract the directory path of the script
         git_directory=os.path.dirname(this_files_path)
-        print(git_directory)
         # Execute git command to get the commit hash
         result = subprocess.run(['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, cwd=git_directory)
         # Decode the output and strip any trailing whitespace
