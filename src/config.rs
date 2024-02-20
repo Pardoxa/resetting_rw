@@ -29,6 +29,9 @@ pub enum Exec{
     #[clap(visible_alias="unim")]
     /// Performs scanning with uniform mirroring probability distribution. No resets.
     ScanUniMirror(UniScanOpts),
+    /// Performs scanning with uniform mirroring probability distribution. No resets.
+    #[clap(visible_alias="unima")]
+    ScanUniMirrorAdaptive(UniScanOpts),
     /// Create histograms only mirroring
     MirrorHists(MirrorHists)
 }

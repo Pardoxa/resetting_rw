@@ -190,7 +190,7 @@ impl ResettingUniWalker{
         self.x_pos = 0.0;
     }
 
-    pub fn mirror_and_draw_next_mirror_time(&mut self)
+    pub fn mirror_and_draw_next_mirror_time(&mut self) -> f64
     {
         let mirror_time = self.mirror_time_distr.sample(&mut self.rng);
         let steps = (mirror_time / self.step_size).floor() as u64;
@@ -198,6 +198,7 @@ impl ResettingUniWalker{
         self.mirrors_performed += 1; 
         let mirror_factor = self.mirror_dist.sample(&mut self.rng);
         self.x_pos *= mirror_factor;
+        mirror_time
     }
 
     pub fn reset(&mut self)
@@ -327,6 +328,55 @@ impl ResettingUniWalker{
             }
         }
     }
+
+    pub fn adaptive_mirror_until_found(&mut self) -> f64
+    {
+        #[inline]
+        fn calc_stepsize(
+            pos: f64, 
+            target: f64,
+        ) -> f64
+        {
+            let abs_dist = (target-pos).abs();
+            if abs_dist >= 0.1
+            {
+                1e-5
+            } else {
+                let exp = abs_dist.mul_add(40.0, -9.0);
+                10.0_f64.powf(exp)
+            }
+        }
+
+        self.reset();
+        assert!(self.x_pos < self.target_pos);
+        let mut total_time = 0.0;
+        // ACHTUNG!!! SQRT2 added
+        'outer: loop {
+            let mut time = 0.0;
+            let mirror_time = self.mirror_and_draw_next_mirror_time();
+            loop{
+                let left = mirror_time - time;
+                let mut sz = calc_stepsize(
+                    self.x_pos, 
+                    self.target_pos
+                );
+                sz = sz.min(left);
+                //println!("sz {sz:e}");
+                let sq_sz = SQRT_2 * sz.sqrt();
+                let old = self.x_pos;
+                self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * sq_sz;
+                self.time_steps_performed += 1;
+                time += sz;
+                if (old..=self.x_pos).contains(&self.target_pos){
+                    break 'outer total_time + time;
+                }
+                if (time - mirror_time).abs() < 1e-9 {
+                    total_time += time;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 impl From<ResettingUniWalkerHusk> for ResettingUniWalker
@@ -368,6 +418,11 @@ pub fn execute_uni(opts: UniScanOpts)
 pub fn execute_uni_only_mirror(opts: UniScanOpts)
 {
     execute_uni_helper(opts, ResettingUniWalker::mirror_until_found);
+}
+
+pub fn execute_uni_only_mirror_adaptive(opts: UniScanOpts)
+{
+    execute_uni_helper(opts, ResettingUniWalker::adaptive_mirror_until_found);
 }
 
 pub fn execute_uni_helper<F>(opts: UniScanOpts, fun: F)
