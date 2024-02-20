@@ -18,7 +18,7 @@ def get_git_hash():
         git_hash = result.stdout.decode('utf-8').strip()
         return git_hash
     except Exception as e:
-        print("Error:", e)
+        print("#Error:", e)
         return None
 
 # Get and print the current Git hash
@@ -44,6 +44,7 @@ if git_hash:
     print("# Current Git hash:", git_hash)
 else:
     print("# Failed to retrieve Git hash.")
-
+    
+# Print calculated mean first passage time for each rate
 for rate, mfpt in zip(x, mfpt_arr):
     print(rate, " ", mfpt)

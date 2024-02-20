@@ -19,6 +19,23 @@ use self::{misc::*, parse::parse_and_add_to_global};
 
 const RELAXED: std::sync::atomic::Ordering = std::sync::atomic::Ordering::Relaxed;
 
+#[inline]
+fn interpolate(
+    old: f64, 
+    new: f64,
+    target: f64, 
+    step_size: f64, 
+    time_steps_performed: u64
+) -> f64
+{
+    // now linear interpolation:
+    let delta = new - old;
+    let frac = (target - old) / delta;
+    debug_assert!(frac >= 0.0);
+    debug_assert!(frac <= 1.0);
+    (time_steps_performed as f64 + frac) * step_size
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResettingUniWalkerHusk{
     pub rng_seed: u64,
@@ -215,7 +232,7 @@ impl ResettingUniWalker{
         }
     }
 
-    pub fn walk_until_found(&mut self)
+    pub fn walk_until_found(&mut self) -> f64
     {
         self.reset();
         assert!(self.x_pos < self.target_pos);
@@ -241,8 +258,18 @@ impl ResettingUniWalker{
                 
                 self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * sq_st;
                 if (old..=self.x_pos).contains(&self.target_pos){
+                    
                     self.time_steps_performed += i;
-                    break 'outer;
+                    let time = interpolate(
+                        old, 
+                        self.x_pos,
+                        self.target_pos, 
+                        self.step_size, 
+                        self.time_steps_performed
+                    );
+                    self.time_steps_performed += 1;
+                    
+                    break 'outer time;
                 }
             }
             self.time_steps_performed += steps;
@@ -261,12 +288,13 @@ impl ResettingUniWalker{
                 }
             }
             if self.target_pos == self.x_pos{
-                break;
+                let time = self.time_steps_performed as f64 * self.step_size;
+                break time;
             }
         }
     }
 
-    pub fn mirror_until_found(&mut self)
+    pub fn mirror_until_found(&mut self) -> f64
     {
         self.reset();
         assert!(self.x_pos < self.target_pos);
@@ -280,13 +308,22 @@ impl ResettingUniWalker{
                 self.x_pos += self.rng.sample::<f64,_>(StandardNormal) * sq_st;
                 if (old..=self.x_pos).contains(&self.target_pos){
                     self.time_steps_performed += i;
-                    break 'outer;
+                    let time = interpolate(
+                        old, 
+                        self.x_pos,
+                        self.target_pos, 
+                        self.step_size, 
+                        self.time_steps_performed
+                    );
+                    self.time_steps_performed += 1;
+                    break 'outer time;
                 }
             }
             self.time_steps_performed += steps;
             self.mirror_and_draw_next_mirror_time();
             if self.target_pos == self.x_pos{
-                break;
+                let time = self.time_steps_performed as f64 * self.step_size;
+                break time;
             }
         }
     }
@@ -334,7 +371,7 @@ pub fn execute_uni_only_mirror(opts: UniScanOpts)
 }
 
 pub fn execute_uni_helper<F>(opts: UniScanOpts, fun: F)
-where F: Fn(&mut ResettingUniWalker) + Sync
+where F: Sync + Fn(&mut ResettingUniWalker) -> f64
 {
     let husk: ResettingUniWalkerHusk = parse_and_add_to_global(opts.json);
 
@@ -344,12 +381,13 @@ where F: Fn(&mut ResettingUniWalker) + Sync
         "average_resets",
         "average_steps",
         "average_mirrors",
-        "average_time"
+        "average_time",
+        "interpolated_average_time"
     ];
     write_slice_head(&mut buf, header).unwrap();
 
     let step_size = husk.step_size;
-
+    let total_samples = opts.samples as f64;
     for i in 0..opts.lambda_samples{
 
         let lambda = opts.lambda_start + i as f64 *(opts.lambda_end - opts.lambda_start) / (opts.lambda_samples - 1) as f64;
@@ -379,6 +417,7 @@ where F: Fn(&mut ResettingUniWalker) + Sync
         let sum_resets = AtomicU64::new(0);
         let sum_mirrors = AtomicU64::new(0);
         let sum_time_steps = AtomicU64::new(0);
+        let sum_time = Mutex::new(0.0);
 
         (0..opts.threads.get())
             .into_par_iter()
@@ -391,20 +430,26 @@ where F: Fn(&mut ResettingUniWalker) + Sync
                         let mut tmp_sum_resets = 0;
                         let mut tmp_sum_time_steps = 0;
                         let mut tmp_sum_mirrors = 0;
+                        let mut tmp_time_sum = 0.0;
                         for _ in 0..work{
-                            fun(&mut walker);
+                            let time = fun(&mut walker);
+                            tmp_time_sum += time;
                             tmp_sum_resets += walker.resets_performed;
                             tmp_sum_time_steps += walker.time_steps_performed;
                             tmp_sum_mirrors += walker.mirrors_performed;
                         }
-                        sum_resets.fetch_add(tmp_sum_resets, RELAXED);
-                        sum_time_steps.fetch_add(tmp_sum_time_steps, RELAXED);
-                        sum_mirrors.fetch_add(tmp_sum_mirrors, RELAXED);
                         if left > 0{
                             queue.push(
                                 (walker, left)
                             );
                         }
+                        sum_resets.fetch_add(tmp_sum_resets, RELAXED);
+                        sum_time_steps.fetch_add(tmp_sum_time_steps, RELAXED);
+                        sum_mirrors.fetch_add(tmp_sum_mirrors, RELAXED);
+                        let mut time_sum_lock = sum_time.lock().unwrap();
+                        *time_sum_lock += tmp_time_sum;
+                        drop(time_sum_lock);
+                        
                     }
                 }
             );
@@ -414,14 +459,14 @@ where F: Fn(&mut ResettingUniWalker) + Sync
         let sum_time_steps = sum_time_steps.into_inner();
         let sum_mirrors = sum_mirrors.into_inner();
 
-        let total_samples = opts.samples;
+        let average_time_interpol = sum_time.into_inner().unwrap() / total_samples;
 
-        let average_resets = sum_resets as f64 / total_samples as f64;
-        let average_steps = sum_time_steps as f64 / total_samples as f64;
+        let average_resets = sum_resets as f64 / total_samples;
+        let average_steps = sum_time_steps as f64 / total_samples;
         let average_time = average_steps * step_size;
-        let average_mirrors = sum_mirrors as f64 / total_samples as f64;
+        let average_mirrors = sum_mirrors as f64 / total_samples;
         println!("lambda {lambda} average resets: {average_resets}, average_steps {average_steps} average_time {average_time}");
-        writeln!(buf, "{lambda} {average_resets} {average_steps} {average_mirrors} {average_time}").unwrap();
+        writeln!(buf, "{lambda} {average_resets} {average_steps} {average_mirrors} {average_time} {average_time_interpol}").unwrap();
     }
 }
 
