@@ -29,6 +29,9 @@ fn main() {
         },
         Exec::MirrorHists(opt) => {
             walker::exec_mirroring_hists(opt.json_path.as_ref())
+        },
+        Exec::ScanLUniMirror(opt) => {
+            walker::execute_pos_scan(opt)
         }
     }
     

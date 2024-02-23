@@ -29,6 +29,9 @@ pub enum Exec{
     #[clap(visible_alias="unim")]
     /// Performs scanning with uniform mirroring probability distribution. No resets.
     ScanUniMirror(UniScanOpts),
+    #[clap(visible_alias="scanl")]
+    /// Scan L
+    ScanLUniMirror(LUniScanOpts),
     /// Performs scanning with uniform mirroring probability distribution. No resets.
     #[clap(visible_alias="unima")]
     ScanUniMirrorAdaptive(UniScanOpts),
@@ -156,6 +159,37 @@ pub struct UniScanOpts{
     /// Number of samples to take for lambda.
     #[arg(long, short)]
     pub lambda_samples: usize,
+
+    /// Path to the output file
+    #[arg(long, short)]
+    pub out: Option<Utf8PathBuf>
+}
+
+#[derive(Parser)]
+pub struct LUniScanOpts{
+    /// Path to the input JSON file. If not given, it will print out a default config file
+    #[arg(long, short, requires("out"))]
+    pub json: Option<Utf8PathBuf>,
+
+    #[arg(long, short)]
+    /// Number of samples to take.
+    pub samples: usize,
+
+    #[arg(long, short)]
+    /// Number of threads to use.
+    pub threads: NonZeroUsize,
+
+    /// Start value of L.
+    #[arg(long, short)]
+    pub l_start: f64,
+
+    /// End value of L.
+    #[arg(long, short)]
+    pub l_end: f64,
+
+    /// Number of samples to take for L.
+    #[arg(long, short)]
+    pub l_samples: usize,
 
     /// Path to the output file
     #[arg(long, short)]

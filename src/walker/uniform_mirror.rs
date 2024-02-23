@@ -538,6 +538,106 @@ where F: Sync + Fn(&mut ResettingUniWalker) -> f64
     }
 }
 
+pub fn execute_pos_scan(opts: LUniScanOpts)
+{
+    let husk: ResettingUniWalkerHusk = parse_and_add_to_global(opts.json);
+
+    let mut buf = create_buf_with_command_and_version(opts.out.as_deref().unwrap());
+    let header = [
+        "L",
+        "average_resets",
+        "average_steps",
+        "average_mirrors",
+        "average_time",
+        "interpolated_average_time"
+    ];
+
+    write_slice_head(&mut buf, header).unwrap();
+
+    let step_size = husk.step_size;
+    let total_samples = opts.samples as f64;
+    for i in 0..opts.l_samples{
+
+        let l = opts.l_start + i as f64 *(opts.l_end - opts.l_start) / (opts.l_samples - 1) as f64;
+
+        let mut husk = husk.clone();
+        husk.target_pos = l;
+
+        let mut walker: ResettingUniWalker = husk.into(); 
+
+        let queue = SyncQueue::create_work_queue(
+            opts.samples, 
+            NonZeroUsize::new(opts.threads.get() * 3).unwrap()
+        );
+
+        let queue = queue.map(
+            |amount|
+            {
+                let mut w = walker.clone();
+                w.rng = Pcg64::from_rng(&mut walker.rng).unwrap();
+                w.reset();
+                (w, amount)
+            }
+        );
+
+        let samples_per_packet = (opts.samples / (opts.threads.get() * 12)).max(1);
+
+        let sum_resets = AtomicU64::new(0);
+        let sum_mirrors = AtomicU64::new(0);
+        let sum_time_steps = AtomicU64::new(0);
+        let sum_time = Mutex::new(0.0);
+
+        (0..opts.threads.get())
+            .into_par_iter()
+            .for_each(
+                |_|
+                {
+                    let mut tmp_time_sum = 0.0;
+                    let mut tmp_sum_resets = 0;
+                    let mut tmp_sum_time_steps = 0;
+                    let mut tmp_sum_mirrors = 0;
+                    while let Some((mut walker, amount)) = queue.pop() {
+                        let work = amount.min(samples_per_packet);
+                        let left = amount - work;
+
+                        for _ in 0..work{
+                            let time = walker.mirror_until_found();
+                            tmp_time_sum += time;
+                            tmp_sum_resets += walker.resets_performed;
+                            tmp_sum_time_steps += walker.time_steps_performed;
+                            tmp_sum_mirrors += walker.mirrors_performed;
+                        }
+                        if left > 0{
+                            queue.push(
+                                (walker, left)
+                            );
+                        }
+                    }
+                    sum_resets.fetch_add(tmp_sum_resets, RELAXED);
+                    sum_time_steps.fetch_add(tmp_sum_time_steps, RELAXED);
+                    sum_mirrors.fetch_add(tmp_sum_mirrors, RELAXED);
+                    let mut time_sum_lock = sum_time.lock().unwrap();
+                    *time_sum_lock += tmp_time_sum;
+                    drop(time_sum_lock);
+                }
+            );
+
+
+        let sum_resets = sum_resets.into_inner();
+        let sum_time_steps = sum_time_steps.into_inner();
+        let sum_mirrors = sum_mirrors.into_inner();
+
+        let average_time_interpol = sum_time.into_inner().unwrap() / total_samples;
+
+        let average_resets = sum_resets as f64 / total_samples;
+        let average_steps = sum_time_steps as f64 / total_samples;
+        let average_time = average_steps * step_size;
+        let average_mirrors = sum_mirrors as f64 / total_samples;
+        println!("L {l} average resets: {average_resets}, average_steps {average_steps} average_time {average_time} interp_time {average_time_interpol}");
+        writeln!(buf, "{l} {average_resets} {average_steps} {average_mirrors} {average_time} {average_time_interpol}").unwrap();
+    }
+}
+
 pub fn exec_mirroring_hists<P>(path: Option<P>)
 where P: AsRef<Path>
 {
