@@ -538,7 +538,21 @@ where F: Sync + Fn(&mut ResettingUniWalker) -> f64
     }
 }
 
-pub fn execute_pos_scan(opts: LUniScanOpts)
+pub fn execute_pos_scan_uni(opts: LUniScanOpts)
+{
+    execute_pos_scan(opts, ResettingUniWalker::walk_until_found)
+}
+
+pub fn execute_pos_scan_uni_only_mirror(opts: LUniScanOpts)
+{
+    execute_pos_scan(opts, ResettingUniWalker::mirror_until_found)
+}
+
+pub fn execute_pos_scan<F>(
+    opts: LUniScanOpts,
+    fun: F
+)
+where F: Sync + Fn(&mut ResettingUniWalker) -> f64
 {
     let husk: ResettingUniWalkerHusk = parse_and_add_to_global(opts.json);
 
@@ -601,7 +615,7 @@ pub fn execute_pos_scan(opts: LUniScanOpts)
                         let left = amount - work;
 
                         for _ in 0..work{
-                            let time = walker.mirror_until_found();
+                            let time = fun(&mut walker);
                             tmp_time_sum += time;
                             tmp_sum_resets += walker.resets_performed;
                             tmp_sum_time_steps += walker.time_steps_performed;

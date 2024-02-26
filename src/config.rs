@@ -30,8 +30,11 @@ pub enum Exec{
     /// Performs scanning with uniform mirroring probability distribution. No resets.
     ScanUniMirror(UniScanOpts),
     #[clap(visible_alias="scanl")]
-    /// Scan L
+    /// Scan L only mirroring
     ScanLUniMirror(LUniScanOpts),
+    #[clap(visible_alias="scanlb")]
+    /// Scan L mirroring and resets
+    ScanLUniMirrorReset(LUniScanOpts),
     /// Performs scanning with uniform mirroring probability distribution. No resets.
     #[clap(visible_alias="unima")]
     ScanUniMirrorAdaptive(UniScanOpts),
