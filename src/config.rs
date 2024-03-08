@@ -39,7 +39,9 @@ pub enum Exec{
     #[clap(visible_alias="unima")]
     ScanUniMirrorAdaptive(UniScanOpts),
     /// Create histograms only mirroring
-    MirrorHists(MirrorHists)
+    MirrorHists(MirrorHists),
+    ///
+    TestEffRandWalk
 }
 
 #[derive(Parser)]

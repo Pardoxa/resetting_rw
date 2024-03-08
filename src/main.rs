@@ -33,7 +33,8 @@ fn main() {
         Exec::ScanLUniMirror(opt) => {
             walker::execute_pos_scan_uni_only_mirror(opt)
         },
-        Exec::ScanLUniMirrorReset(opt) => walker::execute_pos_scan_uni(opt)
+        Exec::ScanLUniMirrorReset(opt) => walker::execute_pos_scan_uni(opt),
+        Exec::TestEffRandWalk => walker::test_eff_rand_walker()
     }
     
 }
