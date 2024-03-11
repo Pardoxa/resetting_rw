@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BinaryHeap},
-    f64::consts::SQRT_2
+    f64::consts::SQRT_2,
+    io::Write
 };
 use itertools::*;
 use ordered_float::OrderedFloat;
@@ -8,19 +9,36 @@ use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Exp, StandardNormal};
 use rand_pcg::Pcg64Mcg;
 
+use crate::misc::create_buf_with_command_and_version;
+
 
 pub fn test_eff_rand_walker()
 {
-    let rng = Pcg64Mcg::seed_from_u64(0xff00abc);
-    let mut walker = EffRandWalk::new_test(
-        4, 
+    let rng = Pcg64Mcg::seed_from_u64(0xff00abcf);
+    let mut walker = EffRandWalk::new(
+        10, 
         1.0,
-        rng
+        3e-5,
+        0.1,
+        rng,
+        0.5
     );
-    for _ in 0..100{
+    for _ in 0..100000{
         walker.bisection_step();
     }
-    dbg!(walker);
+    for (idx, walk) in walker.walk.iter().enumerate(){
+        let name = format!("walker{idx}");
+        let mut buf = create_buf_with_command_and_version(name);
+        for bla in walk.iter(){
+            let time = bla.0;
+            let pos = bla.1.left_pos;
+            writeln!(buf, "{time} {pos}").unwrap();
+        }
+        let (last_time, last_val) = walk.last_key_value().unwrap();
+        let time = last_time + last_val.delta_t;
+        let val = last_val.right_pos;
+        writeln!(buf, "{time} {val}").unwrap();
+    }
 }
 
 #[derive(Debug)]
@@ -106,7 +124,7 @@ where R: Rng
                     break 'outer fpt;
                 }
             }
-            current_time += rough_step_size.mul_add(steps as f64, time_before_loop);
+            current_time = rough_step_size.mul_add(steps as f64, time_before_loop);
             let rest_sq = rest.sqrt() * SQRT_2;
             let left_time = current_time;
             current_time += rest;
@@ -203,15 +221,19 @@ where R: Rng
         while let Some(val) = self.prob.pop(){
             let next_vec_id = val.which_vec + 1;
             // TODO: Check if this is correct or if there is a delta t missing for val.time
-            if val.time.into_inner() > self.fpt || next_vec_id == self.walk.len(){
+            if val.time.into_inner() > self.fpt + 1e-4 || next_vec_id == self.walk.len(){
                 continue;
             }
 
             let delta = self.walk[val.which_vec].get(&val.time)
                 .expect("Has to exist!");
 
-            let (left, right) = delta.bisect();
-            // TODO: CHECK if passage occured! and update self.mfpt if nessessary
+            let (left, right) = delta.bisect(&mut self.rng);
+            if left.contains(&self.target)
+            {
+                self.fpt = val.time.into_inner() + left.delta_t;
+            }
+
             let prob_left = left.calc_prob(self.target);
             let prob_right = right.calc_prob(self.target);
             let time_right = val.time + left.delta_t;
@@ -242,16 +264,29 @@ impl Delta{
         // Currently only implemented as test case, 
         // insert correct equation later!
         // TODO
-        (self.right_pos - target).abs()
+        self.delta_t / (self.left_pos - target).abs()
     }
 
-    pub fn bisect(&self) -> (Delta, Delta)
+    pub fn contains(&self, target: &f64) -> bool
     {
-        // also needs to be done with proper equation,
-        // just a fill in for now to create the husk of the program!
-        // TODO
-        let mid = self.left_pos + 0.5* (self.right_pos - self.left_pos);
+        (self.left_pos..=self.right_pos).contains(target)
+    }
+
+    pub fn bisect<R: Rng>(
+        &self, 
+        rng: &mut R
+    ) -> (Delta, Delta)
+    {
+        let diff = self.right_pos - self.left_pos;
+
         let delta_t = self.delta_t * 0.5;
+        let sq = delta_t.sqrt() * SQRT_2;
+
+        let mut mid = rng.sample::<f64, _>(StandardNormal) * sq;
+        let end = mid + rng.sample::<f64,_>(StandardNormal) * sq;
+        mid -= 0.5 * (end - diff);
+        mid += self.left_pos;
+        
         (
             Self{
                 left_pos: self.left_pos,
