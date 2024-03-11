@@ -243,13 +243,11 @@ where R: Rng
                 self.fpt = self.fpt.min(val.time.into_inner() + left.delta_t);
             }
 
-            let prob_left = left.calc_prob(self.settings.target);
-            let prob_right = right.calc_prob(self.settings.target);
-            let time_right = val.time + left.delta_t;
             let next_vec_id = val.which_vec + 1;
-            self.walk[next_vec_id].insert(val.time, left);
-            self.walk[next_vec_id].insert(time_right, right);
+            let time_right = val.time + left.delta_t;
             if next_vec_id + 1 < self.walk.len(){
+                let prob_left = left.calc_prob(self.settings.target);
+                let prob_right = right.calc_prob(self.settings.target);
                 self.prob.push(
                     NextProb { which_vec: next_vec_id, time: val.time, prob: OrderedFloat(prob_left) }
                 );
@@ -257,6 +255,9 @@ where R: Rng
                     NextProb { which_vec: next_vec_id, time: time_right, prob: OrderedFloat(prob_right) }
                 );
             }
+            self.walk[next_vec_id].insert(val.time, left);
+            self.walk[next_vec_id].insert(time_right, right);
+            
             break;
         }
     }
@@ -275,7 +276,8 @@ impl Delta{
         // Currently only implemented as test case, 
         // insert correct equation later!
         // TODO
-        self.delta_t / (self.left_pos - target).abs()
+        let diff = self.left_pos - target;
+        self.delta_t / (diff * diff)
     }
 
     pub fn contains(&self, target: &f64) -> bool
