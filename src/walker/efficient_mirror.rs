@@ -228,9 +228,9 @@ where R: Rng
     fn bisection_step(&mut self)
     {
         while let Some(val) = self.prob.pop(){
-            let next_vec_id = val.which_vec + 1;
+            
             // TODO: Check if this is correct or if there is a delta t missing for val.time
-            if val.time.into_inner() > self.fpt + 1e-4 || next_vec_id == self.walk.len(){
+            if val.time.into_inner() > self.fpt + 1e-4 {
                 continue;
             }
 
@@ -246,15 +246,17 @@ where R: Rng
             let prob_left = left.calc_prob(self.settings.target);
             let prob_right = right.calc_prob(self.settings.target);
             let time_right = val.time + left.delta_t;
+            let next_vec_id = val.which_vec + 1;
             self.walk[next_vec_id].insert(val.time, left);
             self.walk[next_vec_id].insert(time_right, right);
-            self.prob.push(
-                NextProb { which_vec: next_vec_id, time: val.time, prob: OrderedFloat(prob_left) }
-            );
-            self.prob.push(
-                NextProb { which_vec: next_vec_id, time: time_right, prob: OrderedFloat(prob_right) }
-            );
-
+            if next_vec_id + 1 < self.walk.len(){
+                self.prob.push(
+                    NextProb { which_vec: next_vec_id, time: val.time, prob: OrderedFloat(prob_left) }
+                );
+                self.prob.push(
+                    NextProb { which_vec: next_vec_id, time: time_right, prob: OrderedFloat(prob_right) }
+                );
+            }
             break;
         }
     }
@@ -281,6 +283,7 @@ impl Delta{
         (self.left_pos..=self.right_pos).contains(target)
     }
 
+    // Uses a brownian bridge
     pub fn bisect<R: Rng>(
         &self, 
         rng: &mut R
