@@ -3,7 +3,6 @@ use std::{
     f64::consts::SQRT_2,
     io::Write
 };
-use itertools::*;
 use ordered_float::OrderedFloat;
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Exp, StandardNormal};
@@ -14,14 +13,17 @@ use crate::misc::create_buf_with_command_and_version;
 
 pub fn test_eff_rand_walker()
 {
+    let settings = RadomWalkSettings{
+        target: 1.0,
+        rough_step_size: 3e-5,
+        max_depth: 10,
+        a: 0.5,
+        lambda_mirror: 0.1
+    };
     let rng = Pcg64Mcg::seed_from_u64(0xff00abcf);
     let mut walker = EffRandWalk::new(
-        10, 
-        1.0,
-        3e-5,
-        0.1,
-        rng,
-        0.5
+        settings,
+        rng
     );
     for _ in 0..100000{
         walker.bisection_step();
@@ -48,9 +50,8 @@ pub struct EffRandWalk<R>
     walk: Vec<BTreeMap<OrderedFloat<f64>, Delta>>,
     prob: BinaryHeap<NextProb>,
     fpt: f64,
-    target: f64,
     rng: R,
-    a: f64
+    settings: RadomWalkSettings
 }
 
 #[derive(Debug)]
@@ -81,71 +82,85 @@ impl Ord for NextProb{
     }
 }
 
-impl<R> EffRandWalk<R>
+#[derive(Debug)]
+pub struct RadomWalkSettings{
+    lambda_mirror: f64,
+    rough_step_size: f64,
+    target: f64,
+    a: f64,
+    max_depth: usize
+}
+
+fn create_initial_walk<R>(
+    settings: &RadomWalkSettings,
+    mut rng: R,
+    walk: &mut BTreeMap<OrderedFloat<f64>, Delta>
+) -> f64
 where R: Rng
 {
-    pub fn new(
-        max_depth: usize,
-        target: f64,
-        rough_step_size: f64,
-        lambda_mirror: f64,
-        mut rng: R,
-        a: f64
-    ) -> Self
-    {
-        let mirror_dist = Exp::new(lambda_mirror)
-            .unwrap();
-        let mut next_mirror_time = mirror_dist.sample(&mut rng);
-        let sqrt_step_size = rough_step_size.sqrt();
-        let sq = sqrt_step_size * SQRT_2;
-        let mut current_pos = 0.0;
-        let mut current_time = 0.0;
-        let mut map = BTreeMap::new();
-        let fpt = 'outer: loop {
-            let div = next_mirror_time / rough_step_size;
-            let floored = div.floor();
-            let rest = div - floored;
-            let steps = floored as usize;
-            let time_before_loop = current_time;
-            for i in 0..steps{
-                let left_time = rough_step_size.mul_add(i as f64, time_before_loop);
-                let left_pos = current_pos;
-                current_pos += rng.sample::<f64, _>(StandardNormal) * sq;
-                let delta = Delta{
-                    left_pos,
-                    right_pos: current_pos,
-                    delta_t: rough_step_size
-                };
-                map.insert(OrderedFloat(left_time), delta);
-                if (left_pos..=current_pos).contains(&target)
-                {
-                    // TODO in here I could linerarly interpolate to get a more accurate result
-                    let fpt = rough_step_size.mul_add((i + 1) as f64, time_before_loop);
-                    break 'outer fpt;
-                }
-            }
-            current_time = rough_step_size.mul_add(steps as f64, time_before_loop);
-            let rest_sq = rest.sqrt() * SQRT_2;
-            let left_time = current_time;
-            current_time += rest;
+    walk.clear();
+    let mirror_dist = Exp::new(settings.lambda_mirror)
+        .unwrap();
+    let mut next_mirror_time = mirror_dist.sample(&mut rng);
+    let sqrt_step_size = settings.rough_step_size.sqrt();
+    let sq = sqrt_step_size * SQRT_2;
+    let mut current_pos = 0.0;
+    let mut current_time = 0.0;
+    loop {
+        let div = next_mirror_time / settings.rough_step_size;
+        let floored = div.floor();
+        let rest = div - floored;
+        let steps = floored as usize;
+        let time_before_loop = current_time;
+        for i in 0..steps{
+            let left_time = settings.rough_step_size.mul_add(i as f64, time_before_loop);
             let left_pos = current_pos;
-            current_pos += rng.sample::<f64, _>(StandardNormal) * rest_sq;
+            current_pos += rng.sample::<f64, _>(StandardNormal) * sq;
             let delta = Delta{
                 left_pos,
                 right_pos: current_pos,
-                delta_t: rest
+                delta_t: settings.rough_step_size
             };
-            map.insert(OrderedFloat(left_time), delta);
-            if (left_pos..=current_pos).contains(&target)
+            walk.insert(OrderedFloat(left_time), delta);
+            if (left_pos..=current_pos).contains(&settings.target)
             {
                 // TODO in here I could linerarly interpolate to get a more accurate result
-                let fpt = current_time;
-                break 'outer fpt;
+                let fpt = settings.rough_step_size.mul_add((i + 1) as f64, time_before_loop);
+                return fpt;
             }
-            current_pos *= a;
-            next_mirror_time = mirror_dist.sample(&mut rng);
+        }
+        current_time = settings.rough_step_size.mul_add(steps as f64, time_before_loop);
+        let rest_sq = rest.sqrt() * SQRT_2;
+        let left_time = current_time;
+        current_time += rest;
+        let left_pos = current_pos;
+        current_pos += rng.sample::<f64, _>(StandardNormal) * rest_sq;
+        let delta = Delta{
+            left_pos,
+            right_pos: current_pos,
+            delta_t: rest
         };
-        let heap: BinaryHeap<_> = map
+        walk.insert(OrderedFloat(left_time), delta);
+        if (left_pos..=current_pos).contains(&settings.target)
+        {
+            // TODO in here I could linerarly interpolate to get a more accurate result
+            let fpt = current_time;
+            return fpt;
+        }
+        current_pos *= settings.a;
+        next_mirror_time = mirror_dist.sample(&mut rng);
+    }
+}
+
+fn calc_heap(
+    target: f64,
+    walk: &BTreeMap<OrderedFloat<f64>, Delta>,
+    heap: &mut BinaryHeap<NextProb>
+)
+{
+    heap.clear();
+    heap.extend(
+        walk
             .iter()
             .map(
                 |(time, val)|
@@ -157,63 +172,57 @@ where R: Rng
                         prob: OrderedFloat(prob)
                     }
                 }
-            ).collect();
-        let mut walk = vec![map];
+            )
+    );
+}
+
+
+impl<R> EffRandWalk<R>
+where R: Rng
+{
+    pub fn new(
+        settings: RadomWalkSettings,
+        mut rng: R,
+    ) -> Self
+    {
+        let mut initial_walk = BTreeMap::new();
+        let fpt = create_initial_walk(
+            &settings, 
+            &mut rng,
+            &mut initial_walk
+        );
+        let mut heap = BinaryHeap::new();
+        calc_heap(settings.target, &initial_walk, &mut heap);
+        let mut walk = vec![initial_walk];
         walk.extend(
-            (1..max_depth).map(|_| BTreeMap::new())
+            (1..settings.max_depth).map(|_| BTreeMap::new())
         );
         Self {
             walk, 
             prob: heap, 
-            fpt, 
-            target, 
-            rng, 
-            a
+            fpt,
+            rng,
+            settings
         }
     }
 
-    pub fn new_test(max_depth: usize, target: f64, rng: R) -> Self
+    #[allow(dead_code)]
+    pub fn recycle(&mut self)
     {
-        let walk = [1.0, 2.0, -1.0, 10.0];
-        let queue: BTreeMap<_, _> = walk.iter()
-            .tuple_windows()
-            .enumerate()
-            .map(
-                |(i, (left, right))|
-                {
-                    let time = i as f64;
-                    let d = Delta{
-                        left_pos: *left,
-                        right_pos: *right,
-                        delta_t: 1.0
-                    };
-                    (OrderedFloat(time), d)
-                }
-            ).collect();
-        let heap: BinaryHeap<_> = queue.iter()
-            .map(
-                |(key, val)|
-                {
-                    let prob = val.calc_prob(target);
-                    NextProb{
-                        which_vec: 0,
-                        time: *key,
-                        prob: OrderedFloat(prob)
-                    }
-                }
-            ).collect();
-        let mut walk = vec![queue];
-        walk.extend(
-            (1..max_depth).map(|_| BTreeMap::new())
+        self.walk[1..]
+            .iter_mut()
+            .for_each(|walk| walk.clear());
+        let fpt = create_initial_walk(
+            &self.settings, 
+            &mut self.rng, 
+            &mut self.walk[0]
         );
-        Self{
-            walk,
-            prob: heap,
-            fpt: 3.0,
-            target,
-            rng,
-            a: 1.0
-        }
+        self.fpt = fpt;
+        calc_heap(
+            self.settings.target, 
+            &self.walk[0], 
+            &mut self.prob
+        );
     }
 
     fn bisection_step(&mut self)
@@ -229,13 +238,13 @@ where R: Rng
                 .expect("Has to exist!");
 
             let (left, right) = delta.bisect(&mut self.rng);
-            if left.contains(&self.target)
+            if left.contains(&self.settings.target)
             {
-                self.fpt = val.time.into_inner() + left.delta_t;
+                self.fpt = self.fpt.min(val.time.into_inner() + left.delta_t);
             }
 
-            let prob_left = left.calc_prob(self.target);
-            let prob_right = right.calc_prob(self.target);
+            let prob_left = left.calc_prob(self.settings.target);
+            let prob_right = right.calc_prob(self.settings.target);
             let time_right = val.time + left.delta_t;
             self.walk[next_vec_id].insert(val.time, left);
             self.walk[next_vec_id].insert(time_right, right);
