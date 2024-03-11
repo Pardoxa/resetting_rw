@@ -7,6 +7,7 @@ mod sync_queue;
 
 mod config;
 pub use config::*;
+use parse::parse_and_add_to_global;
 
 
 fn main() {
@@ -34,7 +35,14 @@ fn main() {
             walker::execute_pos_scan_uni_only_mirror(opt)
         },
         Exec::ScanLUniMirrorReset(opt) => walker::execute_pos_scan_uni(opt),
-        Exec::TestEffRandWalk => walker::test_eff_rand_walker()
+        Exec::TestEffRandWalk => walker::test_eff_rand_walker(),
+        Exec::EffRandWalkLambda(opt) => {
+            let opts: walker::MeasureMfptOpt = parse_and_add_to_global(opt.json);
+            walker::eff_measure_mfpt_lambda(
+                opts, 
+                opt.out.unwrap()
+            );
+        }
     }
     
 }

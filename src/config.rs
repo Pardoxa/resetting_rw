@@ -41,7 +41,20 @@ pub enum Exec{
     /// Create histograms only mirroring
     MirrorHists(MirrorHists),
     ///
-    TestEffRandWalk
+    TestEffRandWalk,
+    #[clap(visible_alias="effrm")]
+    EffRandWalkLambda(JsonPathOpt)
+}
+
+#[derive(Parser)]
+pub struct JsonPathOpt{
+    #[arg(long, short, requires("out"))]
+    /// Path to json file
+    pub json: Option<Utf8PathBuf>,
+
+    #[arg(long, short)]
+    /// Name of output file
+    pub out: Option<Utf8PathBuf>
 }
 
 #[derive(Parser)]

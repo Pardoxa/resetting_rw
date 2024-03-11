@@ -1,14 +1,131 @@
 use std::{
     collections::{BTreeMap, BinaryHeap},
     f64::consts::SQRT_2,
-    io::Write
+    io::Write, num::NonZeroUsize,
+    sync::Mutex
 };
+use camino::Utf8PathBuf;
+use indicatif::{ProgressIterator, ProgressStyle};
 use ordered_float::OrderedFloat;
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Exp, StandardNormal};
-use rand_pcg::Pcg64Mcg;
+use rand_pcg::{Pcg32, Pcg64, Pcg64Mcg};
+use serde::{Serialize, Deserialize};
+use derivative::Derivative;
+use rayon::prelude::*;
 
-use crate::misc::create_buf_with_command_and_version;
+use crate::{
+    misc::{create_buf_with_command_and_version, write_slice_head},
+    sync_queue::SyncQueue
+};
+
+#[derive(Debug, Serialize, Deserialize, Derivative, Clone)]
+#[derivative(Default)]
+pub struct MeasureMfptOpt
+{
+    settimgs: RadomWalkSettings,
+    #[derivative(Default(value="NonZeroUsize::new(100).unwrap()"))]
+    samples_per_point: NonZeroUsize,
+    #[derivative(Default(value="0.1"))]
+    lambda_left: f64,
+    #[derivative(Default(value="5.0"))]
+    lambda_right: f64,
+    #[derivative(Default(value="NonZeroUsize::new(100).unwrap()"))]
+    lambda_samples: NonZeroUsize,
+    /// Number of threads. 
+    #[derivative(Default(value="NonZeroUsize::new(1).unwrap()"))]
+    j: NonZeroUsize,
+    seed: u64,
+    bisection_amount: usize
+}
+
+pub fn eff_measure_mfpt_lambda(
+    opt: MeasureMfptOpt,
+    file_name: Utf8PathBuf
+)
+{
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(opt.j.get())
+        .build_global()
+        .unwrap();
+
+    let delta = (opt.lambda_right - opt.lambda_left) / (opt.lambda_samples.get() - 1) as f64;
+
+    let mut seeding_rng = Pcg32::seed_from_u64(opt.seed);
+    let samples_per_packet = (opt.samples_per_point.get() / (opt.j.get() * 12)).max(1);
+
+    let header = [
+        "lambda",
+        "mfpt"
+    ];
+    let mut buf = create_buf_with_command_and_version(file_name);
+    write_slice_head(&mut buf, header).unwrap();
+    let mut settings = opt.settimgs.clone();
+
+    let style = ProgressStyle::default_bar()
+        .template("{msg} [{elapsed_precise} - {eta_precise}] {wide_bar}")
+        .unwrap();
+    
+    for i in (0..opt.lambda_samples.get()).progress_with_style(style)
+    {
+        let lambda = delta.mul_add(i as f64, opt.lambda_left);
+        settings.lambda_mirror = lambda;
+        let queue = SyncQueue::create_work_queue(
+            opt.samples_per_point.get(), 
+            NonZeroUsize::new(opt.j.get() * 3).unwrap()
+        );
+        let queue = queue.map(
+            |amount|
+            {
+                let rng = Pcg64::from_rng(&mut seeding_rng).unwrap();
+                let walk = EffRandWalk::new(
+                    settings.clone(), 
+                    rng
+                );
+                (walk, amount)
+            }
+        );
+        let global_sum_fpt = Mutex::new(0.0);
+        (0..opt.j.get())
+            .into_par_iter()
+            .for_each(
+                |_|
+                {
+                    let mut sum_fpt = 0.0;
+                    while let Some((mut walker, amount)) = queue.pop() {
+                        let work = amount.min(samples_per_packet);
+                        let left = amount - work;
+
+                        for _ in 0..work{
+                            for _ in 0..opt.bisection_amount{
+                                walker.bisection_step();
+                            }
+                            sum_fpt += walker.fpt;
+                            walker.recycle();
+                        }
+                        
+                        if left > 0{
+                            queue.push(
+                                (walker, left)
+                            );
+                        }
+                    }
+                    let mut lock = global_sum_fpt
+                        .lock()
+                        .unwrap();
+                    *lock += sum_fpt;
+                    drop(lock);
+                }
+            );
+        let mfpt = global_sum_fpt.into_inner().unwrap() / opt.samples_per_point.get() as f64;
+        writeln!(
+            buf,
+            "{lambda} {mfpt}"
+        ).unwrap();
+    }
+    
+    
+}
 
 
 pub fn test_eff_rand_walker()
@@ -82,12 +199,17 @@ impl Ord for NextProb{
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Derivative, Clone)]
+#[derivative(Default)]
 pub struct RadomWalkSettings{
+    #[derivative(Default(value="0.1"))]
     lambda_mirror: f64,
+    #[derivative(Default(value="2e-5"))]
     rough_step_size: f64,
+    #[derivative(Default(value="1.0"))]
     target: f64,
     a: f64,
+    #[derivative(Default(value="14"))]
     max_depth: usize
 }
 
