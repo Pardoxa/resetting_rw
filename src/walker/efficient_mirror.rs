@@ -1,11 +1,22 @@
-use std::collections::{BTreeMap, BinaryHeap};
+use std::{
+    collections::{BTreeMap, BinaryHeap},
+    f64::consts::SQRT_2
+};
 use itertools::*;
 use ordered_float::OrderedFloat;
+use rand::{Rng, SeedableRng};
+use rand_distr::{Distribution, Exp, StandardNormal};
+use rand_pcg::Pcg64Mcg;
 
 
 pub fn test_eff_rand_walker()
 {
-    let mut walker = EffRandWalk::new_test(4, 1.0);
+    let rng = Pcg64Mcg::seed_from_u64(0xff00abc);
+    let mut walker = EffRandWalk::new_test(
+        4, 
+        1.0,
+        rng
+    );
     for _ in 0..100{
         walker.bisection_step();
     }
@@ -13,13 +24,15 @@ pub fn test_eff_rand_walker()
 }
 
 #[derive(Debug)]
-pub struct EffRandWalk
+pub struct EffRandWalk<R>
 {
     // Later I should check if HashMap is faster!
     walk: Vec<BTreeMap<OrderedFloat<f64>, Delta>>,
     prob: BinaryHeap<NextProb>,
-    mfpt: f64,
-    target: f64
+    fpt: f64,
+    target: f64,
+    rng: R,
+    a: f64
 }
 
 #[derive(Debug)]
@@ -50,8 +63,98 @@ impl Ord for NextProb{
     }
 }
 
-impl EffRandWalk{
-    pub fn new_test(max_depth: usize, target: f64) -> Self
+impl<R> EffRandWalk<R>
+where R: Rng
+{
+    pub fn new(
+        max_depth: usize,
+        target: f64,
+        rough_step_size: f64,
+        lambda_mirror: f64,
+        mut rng: R,
+        a: f64
+    ) -> Self
+    {
+        let mirror_dist = Exp::new(lambda_mirror)
+            .unwrap();
+        let mut next_mirror_time = mirror_dist.sample(&mut rng);
+        let sqrt_step_size = rough_step_size.sqrt();
+        let sq = sqrt_step_size * SQRT_2;
+        let mut current_pos = 0.0;
+        let mut current_time = 0.0;
+        let mut map = BTreeMap::new();
+        let fpt = 'outer: loop {
+            let div = next_mirror_time / rough_step_size;
+            let floored = div.floor();
+            let rest = div - floored;
+            let steps = floored as usize;
+            let time_before_loop = current_time;
+            for i in 0..steps{
+                let left_time = rough_step_size.mul_add(i as f64, time_before_loop);
+                let left_pos = current_pos;
+                current_pos += rng.sample::<f64, _>(StandardNormal) * sq;
+                let delta = Delta{
+                    left_pos,
+                    right_pos: current_pos,
+                    delta_t: rough_step_size
+                };
+                map.insert(OrderedFloat(left_time), delta);
+                if (left_pos..=current_pos).contains(&target)
+                {
+                    // TODO in here I could linerarly interpolate to get a more accurate result
+                    let fpt = rough_step_size.mul_add((i + 1) as f64, time_before_loop);
+                    break 'outer fpt;
+                }
+            }
+            current_time += rough_step_size.mul_add(steps as f64, time_before_loop);
+            let rest_sq = rest.sqrt() * SQRT_2;
+            let left_time = current_time;
+            current_time += rest;
+            let left_pos = current_pos;
+            current_pos += rng.sample::<f64, _>(StandardNormal) * rest_sq;
+            let delta = Delta{
+                left_pos,
+                right_pos: current_pos,
+                delta_t: rest
+            };
+            map.insert(OrderedFloat(left_time), delta);
+            if (left_pos..=current_pos).contains(&target)
+            {
+                // TODO in here I could linerarly interpolate to get a more accurate result
+                let fpt = current_time;
+                break 'outer fpt;
+            }
+            current_pos *= a;
+            next_mirror_time = mirror_dist.sample(&mut rng);
+        };
+        let heap: BinaryHeap<_> = map
+            .iter()
+            .map(
+                |(time, val)|
+                {
+                    let prob = val.calc_prob(target);
+                    NextProb{
+                        which_vec: 0,
+                        time: *time,
+                        prob: OrderedFloat(prob)
+                    }
+                }
+            ).collect();
+        let mut walk = vec![map];
+        walk.extend(
+            (1..max_depth).map(|_| BTreeMap::new())
+        );
+        Self {
+            walk, 
+            prob: heap, 
+            fpt, 
+            target, 
+            rng, 
+            a
+        }
+    }
+
+    pub fn new_test(max_depth: usize, target: f64, rng: R) -> Self
     {
         let walk = [1.0, 2.0, -1.0, 10.0];
         let queue: BTreeMap<_, _> = walk.iter()
@@ -88,8 +191,10 @@ impl EffRandWalk{
         Self{
             walk,
             prob: heap,
-            mfpt: 3.0,
-            target
+            fpt: 3.0,
+            target,
+            rng,
+            a: 1.0
         }
     }
 
@@ -98,7 +203,7 @@ impl EffRandWalk{
         while let Some(val) = self.prob.pop(){
             let next_vec_id = val.which_vec + 1;
             // TODO: Check if this is correct or if there is a delta t missing for val.time
-            if val.time.into_inner() > self.mfpt || next_vec_id == self.walk.len(){
+            if val.time.into_inner() > self.fpt || next_vec_id == self.walk.len(){
                 continue;
             }
 
