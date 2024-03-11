@@ -231,11 +231,10 @@ where R: Rng
     loop {
         let div = next_mirror_time / settings.rough_step_size;
         let floored = div.floor();
-        let rest = div - floored;
+        let rest = div.fract() * settings.rough_step_size;
         let steps = floored as usize;
-        let time_before_loop = current_time;
         for i in 0..steps{
-            let left_time = settings.rough_step_size.mul_add(i as f64, time_before_loop);
+            let left_time = settings.rough_step_size.mul_add(i as f64, current_time);
             let left_pos = current_pos;
             current_pos += rng.sample::<f64, _>(StandardNormal) * sq;
             let delta = Delta{
@@ -247,11 +246,11 @@ where R: Rng
             if (left_pos..=current_pos).contains(&settings.target)
             {
                 // TODO in here I could linerarly interpolate to get a more accurate result
-                let fpt = settings.rough_step_size.mul_add((i + 1) as f64, time_before_loop);
+                let fpt = settings.rough_step_size.mul_add((i + 1) as f64, current_time);
                 return fpt;
             }
         }
-        current_time = settings.rough_step_size.mul_add(steps as f64, time_before_loop);
+        current_time = settings.rough_step_size.mul_add(steps as f64, current_time);
         let rest_sq = rest.sqrt() * SQRT_2;
         let left_time = current_time;
         current_time += rest;
