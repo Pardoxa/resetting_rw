@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BinaryHeap},
+    collections::BinaryHeap,
     f64::consts::SQRT_2,
     io::Write, num::NonZeroUsize,
     sync::Mutex
@@ -145,18 +145,15 @@ pub fn test_eff_rand_walker()
     for _ in 0..100000{
         walker.bisection_step();
     }
-    for (idx, walk) in walker.walk.iter().enumerate(){
+    for (idx, walk) in walker.walk.iter_mut().enumerate(){
         let name = format!("walker{idx}");
         let mut buf = create_buf_with_command_and_version(name);
-        for bla in walk.iter(){
-            let time = bla.0;
-            let pos = bla.1.left_pos;
+        walk.sort_unstable_by_key(|v| OrderedFloat(v.left_time));
+        for delta in walk.iter(){
+            let time = delta.left_time;
+            let pos = delta.left_pos;
             writeln!(buf, "{time} {pos}").unwrap();
         }
-        let (last_time, last_val) = walk.last_key_value().unwrap();
-        let time = last_time + last_val.delta_t;
-        let val = last_val.right_pos;
-        writeln!(buf, "{time} {val}").unwrap();
     }
 }
 
@@ -164,7 +161,7 @@ pub fn test_eff_rand_walker()
 pub struct EffRandWalk<R>
 {
     // Later I should check if HashMap is faster!
-    walk: Vec<BTreeMap<OrderedFloat<f64>, Delta>>,
+    walk: Vec<Vec<Delta>>,
     prob: BinaryHeap<NextProb>,
     fpt: f64,
     rng: R,
@@ -175,7 +172,7 @@ pub struct EffRandWalk<R>
 pub struct NextProb
 {
     which_vec: usize,
-    time: OrderedFloat<f64>,
+    index: usize,
     prob: OrderedFloat<f64>,
 }
 
@@ -183,7 +180,7 @@ impl Eq for NextProb {}
 
 impl PartialEq for NextProb {
     fn eq(&self, other: &Self) -> bool {
-        self.prob == other.prob && self.time == other.time
+        self.prob == other.prob && self.index == other.index
     }
 }
 
@@ -216,7 +213,7 @@ pub struct RadomWalkSettings{
 fn create_initial_walk<R>(
     settings: &RadomWalkSettings,
     mut rng: R,
-    walk: &mut BTreeMap<OrderedFloat<f64>, Delta>
+    walk: &mut Vec<Delta>
 ) -> f64
 where R: Rng
 {
@@ -240,9 +237,10 @@ where R: Rng
             let delta = Delta{
                 left_pos,
                 right_pos: current_pos,
-                delta_t: settings.rough_step_size
+                delta_t: settings.rough_step_size,
+                left_time
             };
-            walk.insert(OrderedFloat(left_time), delta);
+            walk.push(delta);
             if (left_pos..=current_pos).contains(&settings.target)
             {
                 // TODO in here I could linerarly interpolate to get a more accurate result
@@ -259,9 +257,10 @@ where R: Rng
         let delta = Delta{
             left_pos,
             right_pos: current_pos,
-            delta_t: rest
+            delta_t: rest,
+            left_time
         };
-        walk.insert(OrderedFloat(left_time), delta);
+        walk.push(delta);
         if (left_pos..=current_pos).contains(&settings.target)
         {
             // TODO in here I could linerarly interpolate to get a more accurate result
@@ -275,7 +274,7 @@ where R: Rng
 
 fn calc_heap(
     target: f64,
-    walk: &BTreeMap<OrderedFloat<f64>, Delta>,
+    walk: &[Delta],
     heap: &mut BinaryHeap<NextProb>
 )
 {
@@ -283,13 +282,14 @@ fn calc_heap(
     heap.extend(
         walk
             .iter()
+            .enumerate()
             .map(
-                |(time, val)|
+                |(idx, val)|
                 {
                     let prob = val.calc_prob(target);
                     NextProb{
                         which_vec: 0,
-                        time: *time,
+                        index: idx,
                         prob: OrderedFloat(prob)
                     }
                 }
@@ -306,7 +306,7 @@ where R: Rng
         mut rng: R,
     ) -> Self
     {
-        let mut initial_walk = BTreeMap::new();
+        let mut initial_walk = Vec::with_capacity(1024*1024);
         let fpt = create_initial_walk(
             &settings, 
             &mut rng,
@@ -316,7 +316,7 @@ where R: Rng
         calc_heap(settings.target, &initial_walk, &mut heap);
         let mut walk = vec![initial_walk];
         walk.extend(
-            (1..settings.max_depth).map(|_| BTreeMap::new())
+            (1..settings.max_depth).map(|_| Vec::new())
         );
         Self {
             walk, 
@@ -348,36 +348,35 @@ where R: Rng
 
     fn bisection_step(&mut self)
     {
+        let max_len = self.walk.len();
         while let Some(val) = self.prob.pop(){
             
-            // TODO: Check if this is correct or if there is a delta t missing for val.time
-            if val.time.into_inner() > self.fpt + 1e-4 {
+            let item = &self.walk[val.which_vec][val.index];
+            if item.left_time + item.delta_t > self.fpt {
                 continue;
             }
 
-            let delta = self.walk[val.which_vec].get(&val.time)
-                .expect("Has to exist!");
-
-            let (left, right) = delta.bisect(&mut self.rng);
+            let (left, right) = item.bisect(&mut self.rng);
             if left.contains(&self.settings.target)
             {
-                self.fpt = self.fpt.min(val.time.into_inner() + left.delta_t);
+                self.fpt = self.fpt.min(left.left_time + left.delta_t);
             }
 
             let next_vec_id = val.which_vec + 1;
-            let time_right = val.time + left.delta_t;
-            if next_vec_id + 1 < self.walk.len(){
+            let walk = &mut self.walk[next_vec_id];
+            if next_vec_id + 1 < max_len {
                 let prob_left = left.calc_prob(self.settings.target);
                 let prob_right = right.calc_prob(self.settings.target);
+                let idx = walk.len();
                 self.prob.push(
-                    NextProb { which_vec: next_vec_id, time: val.time, prob: OrderedFloat(prob_left) }
+                    NextProb { which_vec: next_vec_id, index: idx, prob: OrderedFloat(prob_left) }
                 );
                 self.prob.push(
-                    NextProb { which_vec: next_vec_id, time: time_right, prob: OrderedFloat(prob_right) }
+                    NextProb { which_vec: next_vec_id, index: idx + 1, prob: OrderedFloat(prob_right) }
                 );
             }
-            self.walk[next_vec_id].insert(val.time, left);
-            self.walk[next_vec_id].insert(time_right, right);
+            self.walk[next_vec_id].push(left);
+            self.walk[next_vec_id].push(right);
             
             break;
         }
@@ -388,7 +387,8 @@ where R: Rng
 pub struct Delta{
     left_pos: f64,
     right_pos: f64,
-    delta_t: f64
+    delta_t: f64,
+    left_time: f64
 }
 
 impl Delta{
@@ -426,12 +426,14 @@ impl Delta{
             Self{
                 left_pos: self.left_pos,
                 right_pos: mid,
-                delta_t
+                delta_t,
+                left_time: self.left_time
             },
             Self{
                 left_pos: mid,
                 right_pos: self.right_pos,
-                delta_t
+                delta_t,
+                left_time: self.left_time + delta_t
             }
         )
     }
