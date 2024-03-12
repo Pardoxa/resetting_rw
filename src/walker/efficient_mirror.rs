@@ -238,8 +238,9 @@ where R: Rng
                 delta_t: settings.rough_step_size,
                 left_time
             };
+            let contained = delta.contains(&settings.target);
             walk.push(delta);
-            if (left_pos..=current_pos).contains(&settings.target)
+            if contained
             {
                 // TODO in here I could linerarly interpolate to get a more accurate result
                 let fpt = settings.rough_step_size.mul_add((i + 1) as f64, current_time);
@@ -352,7 +353,7 @@ where R: Rng
             }
         } else {
             while let Some(top) = self.prob.peek(){
-                if top.prob.into_inner() < 1e-6{
+                if top.prob.into_inner() < 1.0{
                     break;
                 }
                 self.bisection_step();
@@ -406,21 +407,36 @@ pub struct Delta{
 }
 
 impl Delta{
+    /// $$
+    /// G(x_2, t_2|x_1,t_1)= \frac{1}{\sqrt{4 \pi D t}} \left[ e^{-(x_2-x_1)^2/{4 Dt}} - e^{- (2L-x_1-x_2)^2/{4Dt}} \right]
+    /// $$
+    /// Note: I can ignore the pi as I am only interested in the relative value
+    /// I think the equation is wrong, see https://www.desmos.com/calculator/dmn11f1eea
+    /// So I asked satya for a new equation
+    #[inline]
     pub fn calc_prob(&self, target: f64) -> f64
     {
-        // Currently only implemented as test case, 
-        // insert correct equation later!
-        // TODO
-        let diff = self.left_pos - target;
-        self.delta_t / (diff * diff)
+        let t4 = self.delta_t * 4.0;
+        let sq4t = t4.sqrt();
+        let mut left = self.right_pos - self.left_pos;
+        let mut right = 2.0 * target - self.left_pos - self.right_pos;
+        left *= left;
+        right *= right;
+        left = -left / t4;
+        right = -right / t4;
+        left = left.exp();
+        right = right.exp();
+        (left - right) / sq4t
     }
 
+    #[inline]
     pub fn contains(&self, target: &f64) -> bool
     {
         (self.left_pos..=self.right_pos).contains(target)
     }
 
     // Uses a brownian bridge
+    #[inline]
     pub fn bisect<R: Rng>(
         &self, 
         rng: &mut R
