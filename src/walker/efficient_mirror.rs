@@ -97,9 +97,7 @@ pub fn eff_measure_mfpt_lambda(
                         let left = amount - work;
 
                         for _ in 0..work{
-                            for _ in 0..opt.bisection_amount{
-                                walker.bisection_step();
-                            }
+                            walker.bisect(opt.bisection_amount);
                             sum_fpt += walker.fpt;
                             walker.recycle();
                         }
@@ -344,6 +342,22 @@ where R: Rng
             &self.walk[0], 
             &mut self.prob
         );
+    }
+
+    fn bisect(&mut self, steps: usize)
+    {
+        if steps != 0{
+            for _ in 0..steps{
+                self.bisection_step();
+            }
+        } else {
+            while let Some(top) = self.prob.peek(){
+                if top.prob.into_inner() < 1e-6{
+                    break;
+                }
+                self.bisection_step();
+            }
+        }
     }
 
     fn bisection_step(&mut self)
