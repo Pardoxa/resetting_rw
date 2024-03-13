@@ -1,11 +1,9 @@
 use std::{
-    collections::BinaryHeap,
-    f64::consts::SQRT_2,
-    io::Write, num::NonZeroUsize,
-    sync::Mutex
+    collections::BinaryHeap, f64::consts::SQRT_2, io::Write, num::NonZeroUsize, sync::Mutex
 };
 use camino::Utf8PathBuf;
 use indicatif::{ProgressIterator, ProgressStyle};
+use kahan::KahanSum;
 use ordered_float::OrderedFloat;
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Exp, StandardNormal};
@@ -18,6 +16,18 @@ use crate::{
     misc::{create_buf_with_command_and_version, write_slice_head},
     sync_queue::SyncQueue
 };
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum Bisect{
+    Steps(NonZeroUsize),
+    Threshold(f64)
+}
+
+impl Default for Bisect{
+    fn default() -> Self {
+        Self::Threshold(1e-6)
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Derivative, Clone)]
 #[derivative(Default)]
@@ -36,7 +46,7 @@ pub struct MeasureMfptOpt
     #[derivative(Default(value="NonZeroUsize::new(1).unwrap()"))]
     j: NonZeroUsize,
     seed: u64,
-    bisection_amount: usize
+    bisection: Bisect
 }
 
 pub fn eff_measure_mfpt_lambda(
@@ -85,19 +95,19 @@ pub fn eff_measure_mfpt_lambda(
                 (walk, amount)
             }
         );
-        let global_sum_fpt = Mutex::new(0.0);
+        let global_sum_fpt = Mutex::new(KahanSum::new());
         (0..opt.j.get())
             .into_par_iter()
             .for_each(
                 |_|
                 {
-                    let mut sum_fpt = 0.0;
+                    let mut sum_fpt = KahanSum::new();
                     while let Some((mut walker, amount)) = queue.pop() {
                         let work = amount.min(samples_per_packet);
                         let left = amount - work;
 
                         for _ in 0..work{
-                            walker.bisect(opt.bisection_amount);
+                            walker.bisect(opt.bisection);
                             sum_fpt += walker.fpt;
                             walker.recycle();
                         }
@@ -115,7 +125,7 @@ pub fn eff_measure_mfpt_lambda(
                     drop(lock);
                 }
             );
-        let mfpt = global_sum_fpt.into_inner().unwrap() / opt.samples_per_point.get() as f64;
+        let mfpt = global_sum_fpt.into_inner().unwrap().sum() / opt.samples_per_point.get() as f64;
         writeln!(
             buf,
             "{lambda} {mfpt}"
@@ -162,6 +172,7 @@ pub struct EffRandWalk<R>
     walk: Vec<Vec<Delta>>,
     prob: BinaryHeap<NextProb>,
     fpt: f64,
+    seeding_rng: R,
     rng: R,
     settings: RadomWalkSettings
 }
@@ -298,7 +309,7 @@ fn calc_heap(
 
 
 impl<R> EffRandWalk<R>
-where R: Rng
+where R: Rng + SeedableRng
 {
     pub fn new(
         settings: RadomWalkSettings,
@@ -306,9 +317,10 @@ where R: Rng
     ) -> Self
     {
         let mut initial_walk = Vec::with_capacity(1024*1024);
+        let mut walker_rng = R::from_rng(&mut rng).unwrap();
         let fpt = create_initial_walk(
             &settings, 
-            &mut rng,
+            &mut walker_rng,
             &mut initial_walk
         );
         let mut heap = BinaryHeap::new();
@@ -321,8 +333,9 @@ where R: Rng
             walk, 
             prob: heap, 
             fpt,
-            rng,
-            settings
+            seeding_rng: rng,
+            settings,
+            rng: walker_rng
         }
     }
 
@@ -332,6 +345,7 @@ where R: Rng
         self.walk[1..]
             .iter_mut()
             .for_each(|walk| walk.clear());
+        self.rng = R::from_rng(&mut self.seeding_rng).unwrap();
         let fpt = create_initial_walk(
             &self.settings, 
             &mut self.rng, 
@@ -345,18 +359,22 @@ where R: Rng
         );
     }
 
-    fn bisect(&mut self, steps: usize)
+    fn bisect(&mut self, bisection: Bisect)
     {
-        if steps != 0{
-            for _ in 0..steps{
-                self.bisection_step();
-            }
-        } else {
-            while let Some(top) = self.prob.peek(){
-                if top.prob.into_inner() < 1.0{
-                    break;
+        match bisection{
+            Bisect::Steps(s) => {
+                for _ in 0..s.get()
+                {
+                    self.bisection_step()
                 }
-                self.bisection_step();
+            },
+            Bisect::Threshold(th) => {
+                while let Some(top) = self.prob.peek(){
+                    if top.prob.into_inner() < th{
+                        break;
+                    }
+                    self.bisection_step();
+                }
             }
         }
     }
@@ -367,7 +385,8 @@ where R: Rng
         while let Some(val) = self.prob.pop(){
             
             let item = &self.walk[val.which_vec][val.index];
-            if item.left_time + item.delta_t > self.fpt {
+            // The 1e-13 are there to account for numerical errors
+            if item.left_time + item.delta_t > self.fpt + 1e-13 {
                 continue;
             }
 
@@ -375,6 +394,8 @@ where R: Rng
             if left.contains(&self.settings.target)
             {
                 self.fpt = self.fpt.min(left.left_time + left.delta_t);
+            } else if right.contains(&self.settings.target) {
+                self.fpt = self.fpt.min(right.left_time + right.delta_t);
             }
 
             let next_vec_id = val.which_vec + 1;
@@ -390,8 +411,8 @@ where R: Rng
                     NextProb { which_vec: next_vec_id, index: idx + 1, prob: OrderedFloat(prob_right) }
                 );
             }
-            self.walk[next_vec_id].push(left);
-            self.walk[next_vec_id].push(right);
+            walk.push(left);
+            walk.push(right);
             
             break;
         }
@@ -408,25 +429,14 @@ pub struct Delta{
 
 impl Delta{
     /// $$
-    /// G(x_2, t_2|x_1,t_1)= \frac{1}{\sqrt{4 \pi D t}} \left[ e^{-(x_2-x_1)^2/{4 Dt}} - e^{- (2L-x_1-x_2)^2/{4Dt}} \right]
+    ///     \exp[- (2L-x_1-x_2)^2/{4Dt}]/\exp[- (x_2-x_1)^2/{4Dt}/]= \exp[- (L-x_1)(L-x_2)/{Dt}]
     /// $$
-    /// Note: I can ignore the pi as I am only interested in the relative value
-    /// I think the equation is wrong, see https://www.desmos.com/calculator/dmn11f1eea
-    /// So I asked satya for a new equation
+    /// 
     #[inline]
     pub fn calc_prob(&self, target: f64) -> f64
     {
-        let t4 = self.delta_t * 4.0;
-        let sq4t = t4.sqrt();
-        let mut left = self.right_pos - self.left_pos;
-        let mut right = 2.0 * target - self.left_pos - self.right_pos;
-        left *= left;
-        right *= right;
-        left = -left / t4;
-        right = -right / t4;
-        left = left.exp();
-        right = right.exp();
-        (left - right) / sq4t
+        let inner = -(target - self.left_pos) * (target - self.right_pos) / self.delta_t;
+        inner.exp()
     }
 
     #[inline]

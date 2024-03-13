@@ -358,6 +358,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kahan"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f21cb50baffe6384be28e8272456e23563bd9dda67abc3bcbf51075fbb7d1f79"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -540,6 +549,7 @@ dependencies = [
  "humantime",
  "indicatif",
  "itertools",
+ "kahan",
  "ordered-float",
  "rand",
  "rand_distr",
