@@ -49,6 +49,16 @@ fn main() {
                 opts, 
                 opt.out.unwrap()
             );
+        },
+        Exec::EffRandWalkBeta(opt) => {
+            let mut opts: walker::MeasureMfptBetaOpt = parse_and_add_to_global(opt.json);
+            if let Some(a) = opt.a{
+                opts.settimgs.a = a;
+            }
+            walker::eff_measure_mfpt_beta(
+                opts, 
+                opt.out.unwrap()
+            );
         }
     }
     

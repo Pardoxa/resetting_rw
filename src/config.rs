@@ -45,7 +45,9 @@ pub enum Exec{
     #[clap(visible_alias="effrm")]
     EffRandWalkLambda(JsonPathOpt),
     #[clap(visible_alias="effrt")]
-    EffRandWalkTarget(JsonPathOpt)
+    EffRandWalkTarget(JsonPathOpt),
+    #[clap(visible_alias="beta")]
+    EffRandWalkBeta(BetaOpt)
 }
 
 #[derive(Parser)]
@@ -57,6 +59,21 @@ pub struct JsonPathOpt{
     #[arg(long, short)]
     /// Name of output file
     pub out: Option<Utf8PathBuf>
+}
+
+#[derive(Parser)]
+pub struct BetaOpt{
+    #[arg(long, short, requires("out"))]
+    /// Path to json file
+    pub json: Option<Utf8PathBuf>,
+
+    #[arg(long, short)]
+    /// Name of output file
+    pub out: Option<Utf8PathBuf>,
+
+    #[arg(short)]
+    /// force change a, override settings
+    pub a: Option<f64>
 }
 
 #[derive(Parser)]
