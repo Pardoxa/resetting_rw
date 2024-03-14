@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Exp, StandardNormal};
 use rand_pcg::{Pcg32, Pcg64, Pcg64Mcg};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use derivative::Derivative;
 use rayon::prelude::*;
 
@@ -128,7 +128,10 @@ pub fn eff_measure_mfpt_lambda(
 
                         for _ in 0..work{
                             walker.bisect(opt.bisection);
-                            sum_fpt += walker.fpt;
+                            let (i,j) = walker.delta_fpt;
+                            let delta = &walker.walk[i][j];
+                            let fpt = delta.interpolate(walker.settings.target);
+                            sum_fpt += fpt;
                             walker.recycle();
                         }
                         
@@ -214,7 +217,10 @@ pub fn eff_measure_mfpt_target(
 
                         for _ in 0..work{
                             walker.bisect(opt.bisection);
-                            sum_fpt += walker.fpt;
+                            let (i,j) = walker.delta_fpt;
+                            let delta = &walker.walk[i][j];
+                            let fpt = delta.interpolate(walker.settings.target);
+                            sum_fpt += fpt;
                             walker.recycle();
                         }
                         
@@ -278,6 +284,7 @@ pub struct EffRandWalk<R>
     walk: Vec<Vec<Delta>>,
     prob: BinaryHeap<NextProb>,
     fpt: f64,
+    delta_fpt: (usize, usize),
     seeding_rng: R,
     rng: R,
     settings: RadomWalkSettings
@@ -329,7 +336,7 @@ fn create_initial_walk<R>(
     settings: &RadomWalkSettings,
     mut rng: R,
     walk: &mut Vec<Delta>
-) -> f64
+) -> (f64, (usize, usize))
 where R: Rng
 {
     walk.clear();
@@ -340,6 +347,7 @@ where R: Rng
     let sq = sqrt_step_size * SQRT_2;
     let mut current_pos = 0.0;
     let mut current_time = 0.0;
+    let mut delta_fpt = (0,0);
     loop {
         let div = next_mirror_time / settings.rough_step_size;
         let floored = div.floor();
@@ -361,7 +369,8 @@ where R: Rng
             {
                 // TODO in here I could linerarly interpolate to get a more accurate result
                 let fpt = settings.rough_step_size.mul_add((i + 1) as f64, current_time);
-                return fpt;
+                delta_fpt.1 = walk.len() - 1;
+                return (fpt, delta_fpt);
             }
         }
         current_time = settings.rough_step_size.mul_add(steps as f64, current_time);
@@ -381,7 +390,8 @@ where R: Rng
         {
             // TODO in here I could linerarly interpolate to get a more accurate result
             let fpt = current_time;
-            return fpt;
+            delta_fpt.1 = walk.len() - 1;
+            return (fpt, delta_fpt);
         }
         current_pos *= settings.a;
         next_mirror_time = mirror_dist.sample(&mut rng);
@@ -424,7 +434,7 @@ where R: Rng + SeedableRng
     {
         let mut initial_walk = Vec::with_capacity(1024*1024);
         let mut walker_rng = R::from_rng(&mut rng).unwrap();
-        let fpt = create_initial_walk(
+        let (fpt, delta_fpt) = create_initial_walk(
             &settings, 
             &mut walker_rng,
             &mut initial_walk
@@ -441,23 +451,25 @@ where R: Rng + SeedableRng
             fpt,
             seeding_rng: rng,
             settings,
-            rng: walker_rng
+            rng: walker_rng,
+            delta_fpt
         }
     }
 
-    #[allow(dead_code)]
+    
     pub fn recycle(&mut self)
     {
         self.walk[1..]
             .iter_mut()
             .for_each(|walk| walk.clear());
         self.rng = R::from_rng(&mut self.seeding_rng).unwrap();
-        let fpt = create_initial_walk(
+        let (fpt, delta_fpt) = create_initial_walk(
             &self.settings, 
             &mut self.rng, 
             &mut self.walk[0]
         );
         self.fpt = fpt;
+        self.delta_fpt = delta_fpt;
         calc_heap(
             self.settings.target, 
             &self.walk[0], 
@@ -495,16 +507,19 @@ where R: Rng + SeedableRng
                 continue;
             }
 
+            let next_vec_id = val.which_vec + 1;
             let (left, right) = item.bisect(&mut self.rng);
+            let walk = &mut self.walk[next_vec_id];
             if left.contains(&self.settings.target)
             {
                 self.fpt = left.left_time + left.delta_t;
+                self.delta_fpt = (next_vec_id, walk.len());
             } else if right.contains(&self.settings.target) {
                 self.fpt = right.left_time + right.delta_t;
+                self.delta_fpt = (next_vec_id, walk.len() + 1);
             }
 
-            let next_vec_id = val.which_vec + 1;
-            let walk = &mut self.walk[next_vec_id];
+            
             if next_vec_id + 1 < max_len {
                 let prob_left = left.calc_prob(self.settings.target);
                 let prob_right = right.calc_prob(self.settings.target);
@@ -533,6 +548,14 @@ pub struct Delta{
 }
 
 impl Delta{
+
+    pub fn interpolate(&self, target: f64) -> f64
+    {
+        let delta = self.right_pos - self.left_pos;
+        let frac = (target - self.left_pos) / delta;
+        self.left_time + frac * self.delta_t
+    }
+
     /// $$
     ///     \exp[- (2L-x_1-x_2)^2/{4Dt}]/\exp[- (x_2-x_1)^2/{4Dt}/]= \exp[- (L-x_1)(L-x_2)/{Dt}]
     /// $$
