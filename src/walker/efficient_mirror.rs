@@ -365,7 +365,8 @@ pub fn test_eff_rand_walker()
         rough_step_size: 3e-5,
         max_depth: 10,
         a: 0.5,
-        lambda_mirror: 0.1
+        lambda_mirror: 0.1,
+        origin: 0.0
     };
     let rng = Pcg64Mcg::seed_from_u64(0xff00abcf);
     let mut walker = EffRandWalk::new(
@@ -439,7 +440,9 @@ pub struct RadomWalkSettings{
     target: f64,
     pub a: f64,
     #[derivative(Default(value="40"))]
-    max_depth: usize
+    max_depth: usize,
+    #[derivative(Default(value="0.0"))]
+    origin: f64
 }
 
 fn create_initial_walk<R>(
@@ -455,7 +458,7 @@ where R: Rng
     let mut next_mirror_time = mirror_dist.sample(&mut rng);
     let sqrt_step_size = settings.rough_step_size.sqrt();
     let sq = sqrt_step_size * SQRT_2;
-    let mut current_pos = 0.0;
+    let mut current_pos = settings.origin;
     let mut current_time = 0.0;
     let mut delta_fpt = (0,0);
     loop {
