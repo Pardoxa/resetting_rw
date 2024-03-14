@@ -42,6 +42,13 @@ fn main() {
                 opts, 
                 opt.out.unwrap()
             );
+        },
+        Exec::EffRandWalkTarget(opt) => {
+            let opts: walker::MeasureMfptLOpt = parse_and_add_to_global(opt.json);
+            walker::eff_measure_mfpt_target(
+                opts, 
+                opt.out.unwrap()
+            );
         }
     }
     

@@ -43,7 +43,9 @@ pub enum Exec{
     ///
     TestEffRandWalk,
     #[clap(visible_alias="effrm")]
-    EffRandWalkLambda(JsonPathOpt)
+    EffRandWalkLambda(JsonPathOpt),
+    #[clap(visible_alias="effrt")]
+    EffRandWalkTarget(JsonPathOpt)
 }
 
 #[derive(Parser)]

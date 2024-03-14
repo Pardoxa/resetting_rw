@@ -49,6 +49,26 @@ pub struct MeasureMfptOpt
     bisection: Bisect
 }
 
+#[derive(Debug, Serialize, Deserialize, Derivative, Clone)]
+#[derivative(Default)]
+pub struct MeasureMfptLOpt
+{
+    settimgs: RadomWalkSettings,
+    #[derivative(Default(value="NonZeroUsize::new(100).unwrap()"))]
+    samples_per_point: NonZeroUsize,
+    #[derivative(Default(value="0.1"))]
+    target_left: f64,
+    #[derivative(Default(value="5.0"))]
+    target_right: f64,
+    #[derivative(Default(value="NonZeroUsize::new(100).unwrap()"))]
+    target_samples: NonZeroUsize,
+    /// Number of threads. 
+    #[derivative(Default(value="NonZeroUsize::new(1).unwrap()"))]
+    j: NonZeroUsize,
+    seed: u64,
+    bisection: Bisect
+}
+
 pub fn eff_measure_mfpt_lambda(
     opt: MeasureMfptOpt,
     file_name: Utf8PathBuf
@@ -129,6 +149,92 @@ pub fn eff_measure_mfpt_lambda(
         writeln!(
             buf,
             "{lambda} {mfpt}"
+        ).unwrap();
+    }
+    
+    
+}
+
+pub fn eff_measure_mfpt_target(
+    opt: MeasureMfptLOpt,
+    file_name: Utf8PathBuf
+)
+{
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(opt.j.get())
+        .build_global()
+        .unwrap();
+
+    let delta = (opt.target_right - opt.target_left) / (opt.target_samples.get() - 1) as f64;
+
+    let mut seeding_rng = Pcg32::seed_from_u64(opt.seed);
+    let samples_per_packet = (opt.samples_per_point.get() / (opt.j.get() * 12)).max(1);
+
+    let header = [
+        "L",
+        "mfpt"
+    ];
+    let mut buf = create_buf_with_command_and_version(file_name);
+    write_slice_head(&mut buf, header).unwrap();
+    let mut settings = opt.settimgs.clone();
+
+    let style = ProgressStyle::default_bar()
+        .template("{msg} [{elapsed_precise} - {eta_precise}] {wide_bar}")
+        .unwrap();
+    
+    for i in (0..opt.target_samples.get()).progress_with_style(style)
+    {
+        let target = delta.mul_add(i as f64, opt.target_left);
+        settings.target = target;
+        let queue = SyncQueue::create_work_queue(
+            opt.samples_per_point.get(), 
+            NonZeroUsize::new(opt.j.get() * 3).unwrap()
+        );
+        let queue = queue.map(
+            |amount|
+            {
+                let rng = Pcg64::from_rng(&mut seeding_rng).unwrap();
+                let walk = EffRandWalk::new(
+                    settings.clone(), 
+                    rng
+                );
+                (walk, amount)
+            }
+        );
+        let global_sum_fpt = Mutex::new(KahanSum::new());
+        (0..opt.j.get())
+            .into_par_iter()
+            .for_each(
+                |_|
+                {
+                    let mut sum_fpt = KahanSum::new();
+                    while let Some((mut walker, amount)) = queue.pop() {
+                        let work = amount.min(samples_per_packet);
+                        let left = amount - work;
+
+                        for _ in 0..work{
+                            walker.bisect(opt.bisection);
+                            sum_fpt += walker.fpt;
+                            walker.recycle();
+                        }
+                        
+                        if left > 0{
+                            queue.push(
+                                (walker, left)
+                            );
+                        }
+                    }
+                    let mut lock = global_sum_fpt
+                        .lock()
+                        .unwrap();
+                    *lock += sum_fpt;
+                    drop(lock);
+                }
+            );
+        let mfpt = global_sum_fpt.into_inner().unwrap().sum() / opt.samples_per_point.get() as f64;
+        writeln!(
+            buf,
+            "{target} {mfpt}"
         ).unwrap();
     }
     
