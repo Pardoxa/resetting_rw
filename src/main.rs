@@ -59,7 +59,11 @@ fn main() {
                 opts, 
                 opt.out.unwrap()
             );
+        },
+        Exec::EffBetaCreateJob(opt) => {
+            walker::job_creator(opt)
         }
+
     }
     
 }

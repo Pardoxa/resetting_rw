@@ -1,5 +1,5 @@
 use std::{
-    collections::BinaryHeap, f64::consts::SQRT_2, io::Write, num::NonZeroUsize, sync::Mutex
+    collections::BinaryHeap, f64::consts::SQRT_2, io::{BufRead, BufReader, BufWriter, Write}, num::*, sync::Mutex
 };
 use camino::Utf8PathBuf;
 use indicatif::{ProgressIterator, ProgressStyle};
@@ -11,10 +11,12 @@ use rand_pcg::{Pcg32, Pcg64, Pcg64Mcg};
 use serde::{Deserialize, Serialize};
 use derivative::Derivative;
 use rayon::prelude::*;
+use num_rational::Rational64;
+use num_traits::cast::ToPrimitive;
+use std::path::Path;
 
 use crate::{
-    misc::{create_buf_with_command_and_version, write_slice_head},
-    sync_queue::SyncQueue
+    misc::{create_buf, create_buf_with_command_and_version, write_slice_head}, parse_and_add_to_global, sync_queue::SyncQueue, BetaJob, BetaJobSub, Refine
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -720,3 +722,151 @@ impl Delta{
     }
 }
 
+pub struct RatioRange{
+    start: Rational64,
+    end: Rational64,
+    // number of samples minus 1
+    num_samples_m1: NonZeroI64
+}
+
+impl RatioRange{
+    pub fn float_iter(&self) -> impl Iterator<Item=f64>
+    {
+        self.ratio_iter()
+            .map(|r| r.to_f64().unwrap())
+    }
+
+    pub fn ratio_iter(&self) -> impl Iterator<Item=Rational64>
+    {
+        let delta = (self.end - self.start) / self.num_samples_m1.get();
+        let start = self.start;
+        (0..=self.num_samples_m1.get())
+            .map(
+                move |i| 
+                {
+                    start + delta * i
+                }
+            )
+    }
+}
+
+pub fn job_creator(opt: BetaJob)
+{
+
+    match opt.command{
+        BetaJobSub::A(a) => {
+            let mut json: MeasureMfptBetaOpt = parse_and_add_to_global(a.json);
+            let start = Rational64::approximate_float(a.start).unwrap();
+            let end = Rational64::approximate_float(a.end).unwrap();
+            let num_samples_m1 = NonZeroI64::new(a.steps.get() - 1).unwrap();
+            let ratio = RatioRange{
+                start,
+                end,
+                num_samples_m1
+            };
+
+            for a in ratio.float_iter(){
+                let name = format!("a{}.json", a);
+                let json_writer = create_buf(name);
+                json.settimgs.a = a;
+                serde_json::to_writer_pretty(json_writer, &json).unwrap();
+            }
+        },
+        BetaJobSub::Refine(refine_opt) => {
+            let iter = glob::glob(&refine_opt.glob)
+                .unwrap()
+                .map(Result::unwrap);
+            for path in iter
+            {
+                refine(&path, &refine_opt);
+            }
+        }
+    }
+}
+
+fn refine(path: &Path, refine: &Refine)
+{
+    let reader = fs_err::File::open(path).unwrap();
+    let buf = BufReader::new(reader);
+    let mut lines = buf.lines().skip(2).map(Result::unwrap);
+    let json_line = lines.next().unwrap();
+    let json = &json_line[2..];
+
+    let mut opt: MeasureMfptBetaOpt = match serde_json::from_str(json)
+    {
+        Ok(o) => o,
+        Err(e) => {
+            dbg!(e);
+            panic!("json parsing error!")
+        }
+    };
+
+
+    // tuple is: (beta, mfpt)
+    let vals: Vec<(f64, f64)> = lines.filter(|line| !line.starts_with('#'))
+        .map(
+            |line| 
+            {
+                let mut iter = line.split_ascii_whitespace();
+                let beta = iter.next().unwrap();
+                let beta = beta.parse().unwrap();
+                let mfpt = iter.next().unwrap();
+                let mfpt = mfpt.parse().unwrap();
+                (beta, mfpt)
+            }
+        ).collect();
+
+    let mut min_idx = 0;
+    let mut min_val = f64::INFINITY;
+
+    for (idx, (_, mfpt)) in vals.iter().enumerate()
+    {
+        if *mfpt < min_val{
+            min_val = *mfpt;
+            min_idx = idx;
+        }
+    }
+
+    let mut right = min_idx;
+
+    for (_, mfpt) in &vals[min_idx..]
+    {
+        if mfpt - min_val < refine.th {
+            right += 1;
+        } else {
+            break;
+        }
+    }
+    let mut left = min_idx;
+    for (_, mfpt) in vals[..=min_idx].iter().rev()
+    {
+        if mfpt - min_val < refine.th{
+            left -= 1;
+        } else {
+            break;
+        }
+    }
+
+    opt.beta_left = vals[left].0;
+    opt.beta_right = vals[right].0;
+    if let Some(p) = refine.samples_per_point{
+        opt.samples_per_point = p;
+    }
+    if let Some(t) = refine.j
+    {
+        opt.j = t;
+    }
+
+    let path = path.file_name().unwrap().to_str().unwrap();
+    let path = path.strip_suffix(".dat")
+        .unwrap_or(path);
+
+    let writer = std::fs::File::options()
+        .create_new(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+    let buf = BufWriter::new(writer);
+    serde_json::to_writer_pretty(buf, &opt)
+        .unwrap();
+}

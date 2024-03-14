@@ -1,6 +1,6 @@
-use std::num::NonZeroUsize;
+use std::num::{NonZeroI64, NonZeroUsize};
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use camino::Utf8PathBuf;
 
 
@@ -47,8 +47,48 @@ pub enum Exec{
     #[clap(visible_alias="effrt")]
     EffRandWalkTarget(JsonPathOpt),
     #[clap(visible_alias="beta")]
-    EffRandWalkBeta(BetaOpt)
+    EffRandWalkBeta(BetaOpt),
+    EffBetaCreateJob(BetaJob)
 }
+
+#[derive(Parser)]
+pub struct BetaJob{
+    #[command(subcommand)]
+    pub command: BetaJobSub
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct A{
+    pub start: f64,
+    pub end: f64,
+    pub steps: NonZeroI64,
+    #[arg(long, short)]
+    /// Path to json file
+    pub json: Option<String>,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct Refine{
+    pub th: f64,
+    #[arg(long, short)]
+    /// glob
+    pub glob: String,
+    /// change samples per point
+    #[arg(long, short)]
+    pub samples_per_point: Option<NonZeroUsize>,
+
+    #[arg(short)]
+    /// Change number of threads
+    pub j: Option<NonZeroUsize>
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum BetaJobSub
+{
+    A(A),
+    Refine(Refine)
+}
+
 
 #[derive(Parser)]
 pub struct JsonPathOpt{
