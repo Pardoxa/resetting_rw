@@ -385,17 +385,16 @@ where R: Rng + SeedableRng
         while let Some(val) = self.prob.pop(){
             
             let item = &self.walk[val.which_vec][val.index];
-            // The 1e-13 are there to account for numerical errors
-            if item.left_time + item.delta_t > self.fpt + 1e-13 {
+            if item.left_time + item.delta_t > self.fpt {
                 continue;
             }
 
             let (left, right) = item.bisect(&mut self.rng);
             if left.contains(&self.settings.target)
             {
-                self.fpt = self.fpt.min(left.left_time + left.delta_t);
+                self.fpt = left.left_time + left.delta_t;
             } else if right.contains(&self.settings.target) {
-                self.fpt = self.fpt.min(right.left_time + right.delta_t);
+                self.fpt = right.left_time + right.delta_t;
             }
 
             let next_vec_id = val.which_vec + 1;
