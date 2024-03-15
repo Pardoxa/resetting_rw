@@ -1,5 +1,5 @@
 use std::{
-    collections::{BinaryHeap, VecDeque}, f64::consts::SQRT_2, io::{BufRead, BufReader, BufWriter, Write}, num::*, sync::Mutex
+    collections::BinaryHeap, f64::consts::SQRT_2, io::{BufRead, BufReader, BufWriter, Write}, num::*, sync::Mutex
 };
 use camino::Utf8PathBuf;
 use indicatif::{ProgressIterator, ProgressStyle};
@@ -421,7 +421,7 @@ pub struct EffRandWalk<R>
     // Later I should check if HashMap is faster!
     walk: Vec<Vec<Delta>>,
     prob: BinaryHeap<NextProb>,
-    prob_queue_stack: VecDeque<NextItem>,
+    prob_queue_stack: Vec<NextItem>,
     fpt: f64,
     delta_fpt: (usize, usize),
     seeding_rng: R,
@@ -564,10 +564,10 @@ fn calc_heap(
     );
 }
 
-fn calc_queue_stack(
+fn calc_stack(
     target: f64,
     walk: &[Delta],
-    stack_queue: &mut VecDeque<NextItem>,
+    stack_queue: &mut Vec<NextItem>,
     threshold: f64
 )
 {
@@ -576,6 +576,7 @@ fn calc_queue_stack(
         walk
             .iter()
             .enumerate()
+            .rev()
             .filter_map(
                 |(idx, val)|
                 {
@@ -611,10 +612,10 @@ where R: Rng + SeedableRng
             &mut initial_walk
         );
         let mut heap = BinaryHeap::new();
-        let mut stack_queue = VecDeque::new();
+        let mut stack_queue = Vec::new();
         match threshold{
             None => calc_heap(settings.target, &initial_walk, &mut heap),
-            Some(th) => calc_queue_stack(settings.target, &initial_walk, &mut stack_queue, th)
+            Some(th) => calc_stack(settings.target, &initial_walk, &mut stack_queue, th)
         }
         
         let mut walk = vec![initial_walk];
@@ -656,7 +657,7 @@ where R: Rng + SeedableRng
                 );
             },
             Some(th) => {
-                calc_queue_stack(
+                calc_stack(
                     self.settings.target, 
                     &self.walk[0], 
                     &mut self.prob_queue_stack, 
@@ -726,7 +727,7 @@ where R: Rng + SeedableRng
     fn bisection_stack_queue(&mut self, threshold: f64)
     {
         let max_len = self.walk.len();
-        while let Some(val) = self.prob_queue_stack.pop_front(){
+        while let Some(val) = self.prob_queue_stack.pop(){
             
             let item = &self.walk[val.which][val.idx];
             if item.left_time + item.delta_t > self.fpt {
@@ -751,12 +752,12 @@ where R: Rng + SeedableRng
                 let prob_right = right.calc_prob(self.settings.target);
                 let idx = walk.len();
                 if prob_right > threshold{
-                    self.prob_queue_stack.push_front(
+                    self.prob_queue_stack.push(
                         NextItem { which: next_vec_id, idx: idx + 1}
                     );
                 }
                 if prob_left > threshold{
-                    self.prob_queue_stack.push_front(
+                    self.prob_queue_stack.push(
                         NextItem { which: next_vec_id, idx }
                     );
                 }
