@@ -1,5 +1,5 @@
 use std::{
-    collections::BinaryHeap, f64::consts::SQRT_2, io::{BufRead, BufReader, BufWriter, Write}, num::*, sync::Mutex
+    collections::{BinaryHeap, VecDeque}, f64::consts::SQRT_2, io::{BufRead, BufReader, BufWriter, Write}, num::*, sync::Mutex
 };
 use camino::Utf8PathBuf;
 use indicatif::{ProgressIterator, ProgressStyle};
@@ -23,6 +23,17 @@ use crate::{
 pub enum Bisect{
     Steps(NonZeroUsize),
     Threshold(f64)
+}
+
+impl Bisect{
+
+    pub fn threshold(&self) -> Option<f64>
+    {
+        match self{
+            Self::Steps(_) => None,
+            Self::Threshold(val) => Some(*val)
+        }
+    }
 }
 
 impl Default for Bisect{
@@ -117,6 +128,7 @@ pub fn eff_measure_mfpt_beta(
     let style = ProgressStyle::default_bar()
         .template("{msg} [{elapsed_precise} - {eta_precise}] {wide_bar}")
         .unwrap();
+    let threshold = opt.bisection.threshold();
     
     for i in (0..opt.beta_samples.get()).progress_with_style(style)
     {
@@ -133,7 +145,8 @@ pub fn eff_measure_mfpt_beta(
                 let rng = Pcg64::from_rng(&mut seeding_rng).unwrap();
                 let walk = EffRandWalk::new(
                     settings.clone(), 
-                    rng
+                    rng,
+                    threshold
                 );
                 (walk, amount)
             }
@@ -155,7 +168,7 @@ pub fn eff_measure_mfpt_beta(
                             let delta = &walker.walk[i][j];
                             let fpt = delta.interpolate(walker.settings.target);
                             sum_fpt += fpt;
-                            walker.recycle();
+                            walker.recycle(threshold);
                         }
                         
                         if left > 0{
@@ -207,6 +220,8 @@ pub fn eff_measure_mfpt_lambda(
     let style = ProgressStyle::default_bar()
         .template("{msg} [{elapsed_precise} - {eta_precise}] {wide_bar}")
         .unwrap();
+
+    let threshold = opt.bisection.threshold();
     
     for i in (0..opt.lambda_samples.get()).progress_with_style(style)
     {
@@ -222,7 +237,8 @@ pub fn eff_measure_mfpt_lambda(
                 let rng = Pcg64::from_rng(&mut seeding_rng).unwrap();
                 let walk = EffRandWalk::new(
                     settings.clone(), 
-                    rng
+                    rng,
+                    threshold
                 );
                 (walk, amount)
             }
@@ -244,7 +260,7 @@ pub fn eff_measure_mfpt_lambda(
                             let delta = &walker.walk[i][j];
                             let fpt = delta.interpolate(walker.settings.target);
                             sum_fpt += fpt;
-                            walker.recycle();
+                            walker.recycle(threshold);
                         }
                         
                         if left > 0{
@@ -296,6 +312,7 @@ pub fn eff_measure_mfpt_target(
     let style = ProgressStyle::default_bar()
         .template("{msg} [{elapsed_precise} - {eta_precise}] {wide_bar}")
         .unwrap();
+    let threshold = opt.bisection.threshold();
     
     for i in (0..opt.target_samples.get()).progress_with_style(style)
     {
@@ -311,7 +328,8 @@ pub fn eff_measure_mfpt_target(
                 let rng = Pcg64::from_rng(&mut seeding_rng).unwrap();
                 let walk = EffRandWalk::new(
                     settings.clone(), 
-                    rng
+                    rng,
+                    threshold
                 );
                 (walk, amount)
             }
@@ -333,7 +351,7 @@ pub fn eff_measure_mfpt_target(
                             let delta = &walker.walk[i][j];
                             let fpt = delta.interpolate(walker.settings.target);
                             sum_fpt += fpt;
-                            walker.recycle();
+                            walker.recycle(threshold);
                         }
                         
                         if left > 0{
@@ -373,7 +391,8 @@ pub fn test_eff_rand_walker()
     let rng = Pcg64Mcg::seed_from_u64(0xff00abcf);
     let mut walker = EffRandWalk::new(
         settings,
-        rng
+        rng,
+        None
     );
     for _ in 0..100000{
         walker.bisection_step();
@@ -391,11 +410,18 @@ pub fn test_eff_rand_walker()
 }
 
 #[derive(Debug)]
+pub struct NextItem{
+    which: usize,
+    idx: usize
+}
+
+#[derive(Debug)]
 pub struct EffRandWalk<R>
 {
     // Later I should check if HashMap is faster!
     walk: Vec<Vec<Delta>>,
     prob: BinaryHeap<NextProb>,
+    prob_queue_stack: VecDeque<NextItem>,
     fpt: f64,
     delta_fpt: (usize, usize),
     seeding_rng: R,
@@ -538,6 +564,35 @@ fn calc_heap(
     );
 }
 
+fn calc_queue_stack(
+    target: f64,
+    walk: &[Delta],
+    stack_queue: &mut VecDeque<NextItem>,
+    threshold: f64
+)
+{
+    stack_queue.clear();
+    stack_queue.extend(
+        walk
+            .iter()
+            .enumerate()
+            .filter_map(
+                |(idx, val)|
+                {
+                    let prob = val.calc_prob(target);
+                    (prob > threshold)
+                        .then_some(
+                            NextItem{
+                                which: 0,
+                                idx
+                            } 
+                        )
+                    
+                }
+            )
+    );
+}
+
 
 impl<R> EffRandWalk<R>
 where R: Rng + SeedableRng
@@ -545,6 +600,7 @@ where R: Rng + SeedableRng
     pub fn new(
         settings: RadomWalkSettings,
         mut rng: R,
+        threshold: Option<f64>
     ) -> Self
     {
         let mut initial_walk = Vec::with_capacity(1024*1024);
@@ -555,7 +611,12 @@ where R: Rng + SeedableRng
             &mut initial_walk
         );
         let mut heap = BinaryHeap::new();
-        calc_heap(settings.target, &initial_walk, &mut heap);
+        let mut stack_queue = VecDeque::new();
+        match threshold{
+            None => calc_heap(settings.target, &initial_walk, &mut heap),
+            Some(th) => calc_queue_stack(settings.target, &initial_walk, &mut stack_queue, th)
+        }
+        
         let mut walk = vec![initial_walk];
         walk.extend(
             (1..settings.max_depth).map(|_| Vec::new())
@@ -567,12 +628,13 @@ where R: Rng + SeedableRng
             seeding_rng: rng,
             settings,
             rng: walker_rng,
-            delta_fpt
+            delta_fpt,
+            prob_queue_stack: stack_queue
         }
     }
 
     
-    pub fn recycle(&mut self)
+    pub fn recycle(&mut self, threshold: Option<f64>)
     {
         self.walk[1..]
             .iter_mut()
@@ -585,11 +647,24 @@ where R: Rng + SeedableRng
         );
         self.fpt = fpt;
         self.delta_fpt = delta_fpt;
-        calc_heap(
-            self.settings.target, 
-            &self.walk[0], 
-            &mut self.prob
-        );
+        match threshold{
+            None => {
+                calc_heap(
+                    self.settings.target, 
+                    &self.walk[0], 
+                    &mut self.prob
+                );
+            },
+            Some(th) => {
+                calc_queue_stack(
+                    self.settings.target, 
+                    &self.walk[0], 
+                    &mut self.prob_queue_stack, 
+                    th
+                );
+            }
+        }
+        
     }
 
     fn bisect(&mut self, bisection: Bisect)
@@ -602,12 +677,7 @@ where R: Rng + SeedableRng
                 }
             },
             Bisect::Threshold(th) => {
-                while let Some(top) = self.prob.peek(){
-                    if top.prob.into_inner() < th{
-                        break;
-                    }
-                    self.bisection_step();
-                }
+                self.bisection_stack_queue(th)
             }
         }
     }
@@ -650,6 +720,51 @@ where R: Rng + SeedableRng
             walk.push(right);
             
             break;
+        }
+    }
+
+    fn bisection_stack_queue(&mut self, threshold: f64)
+    {
+        let max_len = self.walk.len();
+        while let Some(val) = self.prob_queue_stack.pop_front(){
+            
+            let item = &self.walk[val.which][val.idx];
+            if item.left_time + item.delta_t > self.fpt {
+                continue;
+            }
+
+            let next_vec_id = val.which + 1;
+            let (left, right) = item.bisect(&mut self.rng);
+            let walk = &mut self.walk[next_vec_id];
+            if left.contains(&self.settings.target)
+            {
+                self.fpt = left.left_time + left.delta_t;
+                self.delta_fpt = (next_vec_id, walk.len());
+            } else if right.contains(&self.settings.target) {
+                self.fpt = right.left_time + right.delta_t;
+                self.delta_fpt = (next_vec_id, walk.len() + 1);
+            }
+
+            
+            if next_vec_id + 1 < max_len {
+                let prob_left = left.calc_prob(self.settings.target);
+                let prob_right = right.calc_prob(self.settings.target);
+                let idx = walk.len();
+                if prob_right > threshold{
+                    self.prob_queue_stack.push_front(
+                        NextItem { which: next_vec_id, idx: idx + 1}
+                    );
+                }
+                if prob_left > threshold{
+                    self.prob_queue_stack.push_front(
+                        NextItem { which: next_vec_id, idx }
+                    );
+                }
+
+            }
+            walk.push(left);
+            walk.push(right);
+            
         }
     }
 }
