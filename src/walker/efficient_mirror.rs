@@ -88,18 +88,18 @@ pub struct MeasureMfptBetaOpt
 {
     pub settimgs: RadomWalkSettings,
     #[derivative(Default(value="NonZeroUsize::new(100).unwrap()"))]
-    samples_per_point: NonZeroUsize,
+    pub samples_per_point: NonZeroUsize,
     #[derivative(Default(value="0.1"))]
-    beta_left: f64,
+    pub beta_left: f64,
     #[derivative(Default(value="5.0"))]
-    beta_right: f64,
+    pub beta_right: f64,
     #[derivative(Default(value="NonZeroUsize::new(100).unwrap()"))]
-    beta_samples: NonZeroUsize,
+    pub beta_samples: NonZeroUsize,
     /// Number of threads. 
     #[derivative(Default(value="NonZeroUsize::new(1).unwrap()"))]
-    j: NonZeroUsize,
-    seed: u64,
-    bisection: Bisect
+    pub j: NonZeroUsize,
+    pub seed: u64,
+    pub bisection: Bisect
 }
 
 pub fn eff_measure_mfpt_beta(
@@ -461,16 +461,16 @@ impl Ord for NextProb{
 #[derivative(Default)]
 pub struct RadomWalkSettings{
     #[derivative(Default(value="0.1"))]
-    lambda_mirror: f64,
+    pub lambda_mirror: f64,
     #[derivative(Default(value="1.0"))]
-    rough_step_size: f64,
+    pub rough_step_size: f64,
     #[derivative(Default(value="1.0"))]
-    target: f64,
+    pub target: f64,
     pub a: f64,
     #[derivative(Default(value="40"))]
-    max_depth: usize,
+    pub max_depth: usize,
     #[derivative(Default(value="0.0"))]
-    origin: f64
+    pub origin: f64
 }
 
 fn create_initial_walk<R>(
@@ -770,12 +770,12 @@ where R: Rng + SeedableRng
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Delta{
-    left_pos: f64,
-    right_pos: f64,
-    delta_t: f64,
-    left_time: f64
+    pub left_pos: f64,
+    pub right_pos: f64,
+    pub delta_t: f64,
+    pub left_time: f64
 }
 
 impl Delta{

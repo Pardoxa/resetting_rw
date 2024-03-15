@@ -60,6 +60,16 @@ fn main() {
                 opt.out.unwrap()
             );
         },
+        Exec::Eff2RandWalkBeta(opt) => {
+            let mut opts: walker::MeasureMfptBetaOpt = parse_and_add_to_global(opt.json);
+            if let Some(a) = opt.a{
+                opts.settimgs.a = a;
+            }
+            walker::even_more_efficient_mirror::eff_measure_mfpt_beta(
+                opts, 
+                opt.out.unwrap()
+            );
+        },
         Exec::EffBetaCreateJob(opt) => {
             walker::job_creator(opt)
         }

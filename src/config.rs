@@ -46,8 +46,9 @@ pub enum Exec{
     EffRandWalkLambda(JsonPathOpt),
     #[clap(visible_alias="effrt")]
     EffRandWalkTarget(JsonPathOpt),
-    #[clap(visible_alias="beta")]
     EffRandWalkBeta(BetaOpt),
+    #[clap(visible_alias="beta")]
+    Eff2RandWalkBeta(BetaOpt),
     EffBetaCreateJob(BetaJob)
 }
 
