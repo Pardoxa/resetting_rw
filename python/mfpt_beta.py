@@ -20,6 +20,7 @@ def main():
     # Subparser for string
     l_parser = subparsers.add_parser("less", help="a<0")
     l_parser.add_argument("-f", type=str, help="file")
+    l_parser.add_argument('-a', type=float, required=True)
     l_parser.set_defaults(func=calc_beta_smaller_0)
 
     args = parser.parse_args()
@@ -37,8 +38,8 @@ def calc_beta_smaller_0(args):
         if line.startswith("#"):
             continue
         nums = [float(i) for i in line.split()]
-        print(nums)
-        break
+        res = analytics.T(nums[0], args.a, boundary=nums[1])
+        print(nums[0], res)
 
 def calc_beta_otherwise(args):
     if args.a >= 1.0 or args.a <= -1.0:
