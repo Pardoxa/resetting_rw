@@ -20,31 +20,39 @@ def get_git_hash():
     except Exception as e:
         print("#Error:", e)
         return None
-
-# Get and print the current Git hash
-git_hash = get_git_hash()
-
-command = ' '.join(sys.argv)
-
-parser = argparse.ArgumentParser(
-    prog="analytical mean first passage time",
-    description="prints out the analytical mean first passage time"
-)
-parser.add_argument('-s', '--start', type=float, required=True)
-parser.add_argument('-e', '--end', type=float, required=True)
-parser.add_argument('--samples', required=True, type=int)
-parser.add_argument('-a', type=float, required=True)
-args = parser.parse_args()
-
-sz = (args.end - args.start) / (args.samples-1.0)
-x = np.array([args.start + sz * i for i in range(0,args.samples)]) 
-mfpt_arr=MFPT.Ta(x, args.a)
-print("#", command)
-if git_hash:
-    print("# Current Git hash:", git_hash)
-else:
-    print("# Failed to retrieve Git hash.")
     
-# Print calculated mean first passage time for each rate
-for rate, mfpt in zip(x, mfpt_arr):
-    print(rate, " ", mfpt)
+def get_parser():
+    parser = argparse.ArgumentParser(
+        prog="analytical mean first passage time",
+        description="prints out the analytical mean first passage time"
+    )
+    parser.add_argument('-s', '--start', type=float, required=True)
+    parser.add_argument('-e', '--end', type=float, required=True)
+    parser.add_argument('--samples', required=True, type=int)
+    parser.add_argument('-a', type=float, required=True)
+    return parser
+
+def main():
+    # Get and print the current Git hash
+    git_hash = get_git_hash()
+
+    command = ' '.join(sys.argv)
+
+    parser = get_parser()
+    args = parser.parse_args()
+
+    sz = (args.end - args.start) / (args.samples-1.0)
+    x = np.array([args.start + sz * i for i in range(0,args.samples)]) 
+    mfpt_arr=MFPT.Ta(x, args.a)
+    print("#", command)
+    if git_hash:
+        print("# Current Git hash:", git_hash)
+    else:
+        print("# Failed to retrieve Git hash.")
+
+    # Print calculated mean first passage time for each rate
+    for rate, mfpt in zip(x, mfpt_arr):
+        print(rate, " ", mfpt)
+
+if __name__ == "__main__":
+    main()

@@ -25,7 +25,6 @@ pub struct DeltaWithLevel
 #[derive(Debug)]
 pub struct EffRandWalk2<R>
 {
-    // Later I should check if HashMap is faster!
     stack_queue: VecDeque<DeltaWithLevel>,
     delta_fpt: Delta,
     fpt: f64,
