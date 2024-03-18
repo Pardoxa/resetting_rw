@@ -975,6 +975,9 @@ fn refine(path: &Path, refine: &Refine)
     {
         opt.j = t;
     }
+    if let Some(depth) = refine.max_depth{
+        opt.settimgs.max_depth = depth.get();
+    }
 
     let path = path.file_name().unwrap().to_str().unwrap();
     let path = path.strip_suffix(".dat")

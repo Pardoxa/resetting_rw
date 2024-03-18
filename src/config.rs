@@ -80,7 +80,11 @@ pub struct Refine{
 
     #[arg(short)]
     /// Change number of threads
-    pub j: Option<NonZeroUsize>
+    pub j: Option<NonZeroUsize>,
+
+    #[arg(long, short)]
+    /// Change max depth
+    pub max_depth: Option<NonZeroUsize>
 }
 
 #[derive(Subcommand, Debug, Clone)]
