@@ -782,6 +782,9 @@ impl Delta{
 
     pub fn interpolate(&self, target: f64) -> f64
     {
+        if self.left_pos == target{
+            return self.left_time;
+        }
         let delta = self.right_pos - self.left_pos;
         let frac = (target - self.left_pos) / delta;
         self.left_time + frac * self.delta_t

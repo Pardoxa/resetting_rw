@@ -1,9 +1,5 @@
 use std::{
-    collections::VecDeque, 
-    f64::consts::SQRT_2, 
-    io::Write, 
-    num::*, 
-    sync::Mutex
+    collections::VecDeque, f64::consts::SQRT_2, io::Write, num::*, sync::Mutex
 };
 use camino::Utf8PathBuf;
 use indicatif::{ProgressIterator, ProgressStyle};
@@ -258,7 +254,8 @@ pub fn eff_measure_mfpt_beta(
 
                         for _ in 0..work{
                             walker.bisection(threshold);
-                            let fpt = walker.delta_fpt.interpolate(walker.settings.target);
+                            let fpt = walker.delta_fpt
+                                .interpolate(walker.settings.target);
                             sum_fpt += fpt;
                             walker.recycle();
                         }
