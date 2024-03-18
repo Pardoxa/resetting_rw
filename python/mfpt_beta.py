@@ -3,31 +3,49 @@ import mfpt_exec
 import sys
 import analytics
 import numpy as np
+import argparse
 
 def main():
-    # Get and print the current Git hash
-    git_hash = mfpt_exec.get_git_hash()
+    parser = argparse.ArgumentParser(description="MFPT")
+    subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
 
-    command = ' '.join(sys.argv)
+    # Subparser for float
+    g_parser = subparsers.add_parser("greater", help="a>=0")
+    g_parser.add_argument('-s', '--start', type=float, required=True)
+    g_parser.add_argument('-e', '--end', type=float, required=True)
+    g_parser.add_argument('--samples', required=True, type=int)
+    g_parser.add_argument('-a', type=float, required=True)
+    g_parser.set_defaults(func=calc_beta_otherwise)
 
-    parser = mfpt_exec.get_parser()
-    # path to file if a < 0
-    parser.add_argument('-f', type=str, required=False)
+    # Subparser for string
+    l_parser = subparsers.add_parser("less", help="a<0")
+    l_parser.add_argument("-f", type=str, help="file")
+    l_parser.set_defaults(func=calc_beta_smaller_0)
+
     args = parser.parse_args()
+    if not hasattr(args, "func"):
+        parser.print_help()
+        exit(1)
 
+    args.func(args)
+
+def calc_beta_smaller_0(args):
+    # Using readlines()
+    file1 = open(args.f, 'r')
+    Lines = file1.readlines()
+    for line in Lines:
+        if line.startswith("#"):
+            continue
+        nums = [float(i) for i in line.split()]
+        print(nums)
+        break
+
+def calc_beta_otherwise(args):
     if args.a >= 1.0 or args.a <= -1.0:
         print("Invalid a")
         sys.exit(0)
-
-    if args.a < 0:
-        calc_beta_smaller_0(args)
-    else:
-        calc_beta_otherwise(args)
-
-def calc_beta_smaller_0(args):
-    print("Unimplemented!")
-
-def calc_beta_otherwise(args):
+    
+    mfpt_exec.print_git_hash_and_command()
     sz = (args.end - args.start) / (args.samples-1.0)
     x = np.array([args.start + sz * i for i in range(0,args.samples)]) 
     res = analytics.T(x.copy(),args.a)

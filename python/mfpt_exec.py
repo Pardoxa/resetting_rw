@@ -32,11 +32,19 @@ def get_parser():
     parser.add_argument('-a', type=float, required=True)
     return parser
 
-def main():
+def print_git_hash_and_command():
     # Get and print the current Git hash
     git_hash = get_git_hash()
 
     command = ' '.join(sys.argv)
+    print("#", command)
+    if git_hash:
+        print("# Current Git hash:", git_hash)
+    else:
+        print("# Failed to retrieve Git hash.")
+
+def main():
+    
 
     parser = get_parser()
     args = parser.parse_args()
@@ -44,12 +52,8 @@ def main():
     sz = (args.end - args.start) / (args.samples-1.0)
     x = np.array([args.start + sz * i for i in range(0,args.samples)]) 
     mfpt_arr=MFPT.Ta(x, args.a)
-    print("#", command)
-    if git_hash:
-        print("# Current Git hash:", git_hash)
-    else:
-        print("# Failed to retrieve Git hash.")
 
+    print_git_hash_and_command()
     # Print calculated mean first passage time for each rate
     for rate, mfpt in zip(x, mfpt_arr):
         print(rate, " ", mfpt)
