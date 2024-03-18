@@ -902,6 +902,7 @@ pub fn job_creator(opt: BetaJob)
 
 fn refine(path: &Path, refine: &Refine)
 {
+    println!("Refining {:?}", path);
     let reader = fs_err::File::open(path).unwrap();
     let buf = BufReader::new(reader);
     let mut lines = buf.lines().skip(2).map(Result::unwrap);
@@ -953,18 +954,20 @@ fn refine(path: &Path, refine: &Refine)
             break;
         }
     }
+    right = right.min(vals.len());
     let mut left = min_idx;
     for (_, mfpt) in vals[..=min_idx].iter().rev()
     {
         if mfpt - min_val < refine.th{
-            left -= 1;
+            left = left.saturating_sub(1);
         } else {
             break;
         }
     }
-
+    println!("Old: [{}, {}]", opt.beta_left, opt.beta_right);
     opt.beta_left = vals[left].0;
     opt.beta_right = vals[right].0;
+    println!("New: [{}, {}]", opt.beta_left, opt.beta_right);
     if let Some(p) = refine.samples_per_point{
         opt.samples_per_point = p;
     }
