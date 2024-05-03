@@ -40,7 +40,7 @@ pub enum Exec{
     ScanUniMirrorAdaptive(UniScanOpts),
     /// Create histograms only mirroring
     MirrorHists(MirrorHists),
-    ///
+    /// Testing efficient random Walker
     TestEffRandWalk,
     #[clap(visible_alias="effrm")]
     EffRandWalkLambda(JsonPathOpt),
