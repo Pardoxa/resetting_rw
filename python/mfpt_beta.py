@@ -10,7 +10,7 @@ def main():
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
 
     # Subparser
-    g_parser = subparsers.add_parser("greater", help="a>=0")
+    g_parser = subparsers.add_parser("greater", help="for a>=0")
     g_parser.add_argument('-s', '--start', type=float, required=True)
     g_parser.add_argument('-e', '--end', type=float, required=True)
     g_parser.add_argument('--samples', required=True, type=int)
@@ -34,7 +34,14 @@ def calc_beta_smaller_0(args):
     # Using readlines()
     file1 = open(args.f, 'r')
     Lines = file1.readlines()
+
+    if args.a >= 0.0:
+        print("ERROR: a needs to be negative here")
+        exit(1)
+
     mfpt_exec.print_git_hash_and_command()
+    print("#β mfpt")
+
     for line in Lines:
         if line.startswith("#"):
             continue
@@ -45,9 +52,13 @@ def calc_beta_smaller_0(args):
 def calc_beta_otherwise(args):
     if args.a >= 1.0 or args.a <= -1.0:
         print("Invalid a")
-        sys.exit(0)
+        exit(1)
+    elif args.a <= 0.0:
+        print("WARNING: A needs to be positive for this to be correct! Calculating it anyways")
     
     mfpt_exec.print_git_hash_and_command()
+    print("#β mfpt")
+
     sz = (args.end - args.start) / (args.samples-1.0)
     x = np.array([args.start + sz * i for i in range(0,args.samples)]) 
     res = analytics.T(x.copy(),args.a)
