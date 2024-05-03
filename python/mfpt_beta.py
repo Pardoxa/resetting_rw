@@ -9,7 +9,7 @@ def main():
     parser = argparse.ArgumentParser(description="MFPT")
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
 
-    # Subparser for float
+    # Subparser
     g_parser = subparsers.add_parser("greater", help="a>=0")
     g_parser.add_argument('-s', '--start', type=float, required=True)
     g_parser.add_argument('-e', '--end', type=float, required=True)
@@ -17,12 +17,12 @@ def main():
     g_parser.add_argument('-a', type=float, required=True)
     g_parser.set_defaults(func=calc_beta_otherwise)
 
-    # Subparser for string
+    # Subparser
     l_parser = subparsers.add_parser("less", help="a<0")
     l_parser.add_argument("-f", type=str, help="file")
     l_parser.add_argument('-a', type=float, required=True)
     l_parser.set_defaults(func=calc_beta_smaller_0)
-
+    
     args = parser.parse_args()
     if not hasattr(args, "func"):
         parser.print_help()
@@ -34,11 +34,12 @@ def calc_beta_smaller_0(args):
     # Using readlines()
     file1 = open(args.f, 'r')
     Lines = file1.readlines()
+    mfpt_exec.print_git_hash_and_command()
     for line in Lines:
         if line.startswith("#"):
             continue
         nums = [float(i) for i in line.split()]
-        res = analytics.T(nums[0], args.a, boundary=nums[1])
+        res = analytics.T(nums[0], args.a, boundary=(nums[1]*nums[0]**2))
         print(nums[0], res)
 
 def calc_beta_otherwise(args):
