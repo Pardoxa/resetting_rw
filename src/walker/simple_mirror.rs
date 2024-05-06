@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use rand_pcg::Pcg64;
 use rand_distr::Exp;
 use rayon::prelude::{IntoParallelRefMutIterator, ParallelIterator};
-use sampling::AtomicHistU32;
 use std::io::Write;
 use serde::{Serialize, Deserialize};
 use rand::{SeedableRng, distributions::Distribution};
@@ -203,49 +202,4 @@ pub fn execute_mirror(opts: MirrorScanOpts)
         println!("lambda {lambda} average resets: {average_resets} var: {var_resets}, average_steps {average_steps} average_time {average_time} var {var_time}");
         writeln!(buf, "{lambda} {average_resets} {var_resets} {average_steps} {average_time} {var_time}").unwrap();
     }
-}
-
-pub fn execute_simple_mirror_reset_pdf(opts: MirrorResetPdfOpts)
-{
-    let (husk, _): (ResettingMirrorWalkerHusk, _) = parse(opts.json);
-
-    let name = format!("mirror_pdf_{}.dat", opts.mirror_prob);
-    println!("creating: {name}");
-    let file = File::create(name).unwrap();
-    let mut buf = BufWriter::new(file);
-
-    writeln!(buf, "#resets pdf").unwrap();
-
-    let mut walker: ResettingMirrorWalker = ResettingMirrorWalker::from(husk, opts.mirror_prob);
-    let mut thread_walker: Vec<_> = (0..opts.threads)
-        .map(
-            |_|
-            {
-                let mut w = walker.clone();
-                w.rng = Pcg64::from_rng(&mut walker.rng).unwrap();
-                w.reset();
-                w
-            }
-        ).collect();
-    let samples_per_thread = opts.samples / opts.threads;
-    let mut hist = AtomicHistU32::new_inclusive(0, opts.max_resets, (opts.max_resets + 1) as usize)
-        .unwrap();
-    thread_walker.par_iter_mut()
-        .for_each(
-            |walker|
-            {
-                for _ in 0..samples_per_thread{
-                    walker.walk_until_found();
-                    hist.increment(walker.resets_performed).unwrap();
-                }
-            }
-        );
-
-    let total_samples = opts.threads * samples_per_thread;
-    for (bin, hits) in hist.bin_hits_iter()
-    {
-        let prob = hits as f64 / total_samples as f64;
-        writeln!(buf, "{} {} {prob}", bin[0], hits).unwrap()
-    }
-    
 }

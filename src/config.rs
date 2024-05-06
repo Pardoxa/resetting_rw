@@ -17,12 +17,6 @@ pub enum Exec{
     ScanResetting(ScanOpts),
     /// Performs scanning with mirror and normal resetting (?).
     ScanMirrorResetting(MirrorScanOpts),
-    /// Computes the probability density function for resetting.
-    SimpleResetPdf(ResetPdfOpts),
-    /// Computes the probability density function for mirror (+?) resetting.
-    SimpleMirrorResetPdf(MirrorResetPdfOpts),
-    /// Uses the Wang-Landau algorithm to compute the density of states.
-    WlResets(WlPdfOpts),
     #[clap(visible_alias="uni")]
     /// Performs scanning with uniform mirror probability distribution. Also uses resets
     ScanUniMirrorReset(UniScanOpts),
