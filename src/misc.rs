@@ -3,7 +3,10 @@ use std::sync::RwLock;
 use fs_err::File;
 use std::path::Path;
 use std::fmt::Display;
+use std::num::*;
 use serde_json::Value;
+use num_rational::Rational64;
+use num_traits::cast::ToPrimitive;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const GIT_HASH: &str = env!("GIT_HASH");
@@ -59,6 +62,17 @@ where P: AsRef<Path>
     buf
 }
 
+pub fn create_buf_with_command_and_version_and_header<P, S, D>(path: P, header: S) -> BufWriter<File>
+where P: AsRef<Path>,
+    S: IntoIterator<Item=D>,
+    D: Display
+{
+    let mut buf = create_buf_with_command_and_version(path);
+    write_slice_head(&mut buf, header)
+        .expect("unable to write header");
+    buf
+}
+
 pub fn write_slice_head<W, S, D>(mut w: W, slice: S) -> std::io::Result<()>
 where W: std::io::Write,
     S: IntoIterator<Item=D>,
@@ -69,4 +83,44 @@ where W: std::io::Write,
         write!(w, " {s}_{i}")?;
     }
     writeln!(w)
+}
+
+
+pub struct RatioIter{
+    start: Rational64,
+    end: Rational64,
+    // number of samples minus 1
+    num_samples_m1: NonZeroI64
+}
+
+impl RatioIter{
+    pub fn float_iter(&self) -> impl Iterator<Item=f64>
+    {
+        self.ratio_iter()
+            .map(|r| r.to_f64().unwrap())
+    }
+
+    pub fn ratio_iter(&self) -> impl Iterator<Item=Rational64>
+    {
+        let delta = (self.end - self.start) / self.num_samples_m1.get();
+        let start = self.start;
+        (0..=self.num_samples_m1.get())
+            .map(
+                move |i| 
+                {
+                    start + delta * i
+                }
+            )
+    }
+
+    pub fn get_ratio_iter(start: f64, end: f64, num_samples: i64) -> Self{
+        let start = Rational64::approximate_float(start).unwrap();
+        let end = Rational64::approximate_float(end).unwrap();
+        let num_samples_m1 = NonZeroI64::new(num_samples - 1).unwrap();
+        RatioIter{
+            start,
+            end,
+            num_samples_m1
+        }
+    }
 }

@@ -4,6 +4,7 @@ mod walker;
 mod parse;
 mod misc;
 mod sync_queue;
+mod analytical;
 
 mod config;
 pub use config::*;
@@ -69,8 +70,10 @@ fn main() {
         },
         Exec::EffBetaCreateJob(opt) => {
             walker::job_creator(opt)
+        },
+        Exec::Eq23(opt) => {
+            analytical::exec_eq_23(opt)
         }
-
     }
     
 }

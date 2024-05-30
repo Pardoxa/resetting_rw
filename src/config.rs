@@ -3,6 +3,8 @@ use std::num::{NonZeroI64, NonZeroUsize};
 use clap::{Parser, Subcommand};
 use camino::Utf8PathBuf;
 
+use crate::analytical::Eq23Opt;
+
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -42,8 +44,11 @@ pub enum Exec{
     EffRandWalkTarget(JsonPathOpt),
     EffRandWalkBeta(BetaOpt),
     #[clap(visible_alias="beta")]
+    /// Do an efficient scan by measuring the mfpt for varying beta
     Eff2RandWalkBeta(BetaOpt),
-    EffBetaCreateJob(BetaJob)
+    EffBetaCreateJob(BetaJob),
+    /// Execute equation 23
+    Eq23(Eq23Opt)
 }
 
 #[derive(Parser)]
