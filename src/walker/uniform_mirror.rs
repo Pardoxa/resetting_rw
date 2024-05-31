@@ -133,7 +133,7 @@ impl MirroringWalkerHistJob{
             target_pos: 0.0, 
             resets_performed: 0,
             steps_until_next_reset: 0,
-            sqrt_step_size: self.step_size.sqrt(),
+            sqrt_step_size: self.step_size.sqrt() * SQRT_2,
             step_size: self.step_size
         }
     }
@@ -238,7 +238,7 @@ impl ResettingUniWalker{
         self.reset();
         assert!(self.x_pos < self.target_pos);
         // ACHTUNG!!! SQRT2 added
-        let sq_st = self.sqrt_step_size * SQRT_2;
+        let sq_st = self.sqrt_step_size;
         'outer: loop {
             let (steps, what) = match self.steps_until_next_mirror.cmp(&self.steps_until_next_reset)
             {
@@ -300,7 +300,7 @@ impl ResettingUniWalker{
         self.reset();
         assert!(self.x_pos < self.target_pos);
         // ACHTUNG!!! SQRT2 added
-        let sq_st = SQRT_2 * self.sqrt_step_size;
+        let sq_st = self.sqrt_step_size;
         'outer: loop {
             let steps = self.steps_until_next_mirror;
             for i in 0..steps
@@ -410,7 +410,7 @@ impl From<ResettingUniWalkerHusk> for ResettingUniWalker
             target_pos: value.target_pos, 
             resets_performed: 0,
             steps_until_next_reset: 0,
-            sqrt_step_size: value.step_size.sqrt(),
+            sqrt_step_size: value.step_size.sqrt() * SQRT_2,
             step_size: value.step_size
         }
     }
