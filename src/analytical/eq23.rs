@@ -59,7 +59,7 @@ pub fn exec_eq_23(opt: Eq23Opt)
         .collect_vec();
     write_res(
         &x_arr, 
-        opt.a, 
+        opt.a.abs(), 
         opt.cutoff, 
         opt.r, 
         &opt.filename
