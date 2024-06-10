@@ -73,6 +73,9 @@ fn main() {
         },
         Exec::Eq23(opt) => {
             analytical::exec_eq_23(opt)
+        },
+        Exec::Fig4(opt) => {
+            analytical::fig4(opt)
         }
     }
     

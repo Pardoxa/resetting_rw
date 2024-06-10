@@ -4,6 +4,7 @@ use fs_err::File;
 use std::path::Path;
 use std::fmt::Display;
 use std::num::*;
+use std::process::{Command, Output};
 use serde_json::Value;
 use num_rational::Rational64;
 use num_traits::cast::ToPrimitive;
@@ -123,4 +124,82 @@ impl RatioIter{
             num_samples_m1
         }
     }
+}
+
+pub fn create_gnuplot_buf<P>(path: P) -> BufWriter<File>
+where P: AsRef<Path>
+{
+    let mut buf = create_buf_with_command_and_version(path);
+    writeln!(buf, "reset session").unwrap();
+    writeln!(buf, "set encoding utf8").unwrap();
+    buf
+}
+
+pub fn  call_gnuplot(gp_file_name: &str) -> Output
+{
+    let out = Command::new("gnuplot")
+        .arg(gp_file_name)
+        .output()
+        .unwrap();
+    if !out.status.success(){
+        eprintln!("FAILED: {gp_file_name}!");
+        dbg!(&out);
+    }
+    out
+}
+
+pub fn create_video(
+    glob: &str, 
+    out_stub: &str, 
+    framerate: u8, 
+    also_convert: bool
+)
+{
+    let program = "ffmpeg";
+    let out = format!("{out_stub}.mp4");
+
+    let _ = std::fs::remove_file(&out);
+
+    let video_out = Command::new(program)
+        .arg("-f")
+        .arg("image2")
+        .arg("-r")
+        .arg(framerate.to_string())
+        .arg("-pattern_type")
+        .arg("glob")
+        .arg("-i")
+        .arg(glob)
+        .arg("-vcodec")
+        .arg("libx264")
+        .arg("-crf")
+        .arg("22")
+        .arg(&out)
+        .output()
+        .unwrap();
+
+    assert!(video_out.status.success());
+
+    if also_convert{
+        let mut c = Command::new(program);
+        let new_name = format!("{out_stub}_conv.mp4");
+        let _ = std::fs::remove_file(&new_name);
+        let args = [
+            "-i",
+            &out,
+            "-c:v",
+            "libx264",
+            "-profile:v",
+            "baseline",
+            "-level",
+            "3.0",
+            "-pix_fmt",
+            "yuv420p",
+            &new_name
+        ];
+        c
+            .args(args);
+        let output = c.output().unwrap();
+        assert!(output.status.success());
+    }
+
 }

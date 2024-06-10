@@ -48,8 +48,31 @@ pub enum Exec{
     Eff2RandWalkBeta(BetaOpt),
     EffBetaCreateJob(BetaJob),
     /// Execute equation 23
-    Eq23(Eq23Opt)
+    Eq23(Eq23Opt),
+    /// Create data for figure 4 b c
+    Fig4(Fig4)
 }
+
+#[derive(Parser)]
+pub struct Fig4{
+    #[arg(short, long)]
+    /// beginning of a range
+    pub a_start: f64,
+    #[arg(short, long)]
+    /// end of a range
+    pub a_end: f64,
+    #[arg(short, long)]
+    /// How many steps in a range
+    pub steps: NonZeroI64,
+    #[arg(short, long)]
+    /// For first a value, where to start beta scan
+    pub initial_beta_start: f64,
+    #[arg(short, long)]
+    /// Where to stop first beta scan
+    pub initial_beta_end: f64
+
+}
+
 
 #[derive(Parser)]
 pub struct BetaJob{
