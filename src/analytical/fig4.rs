@@ -2,6 +2,7 @@ use itertools::Itertools;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{misc::*, Fig4};
+use core::f64;
 use std::{io::Write, process::Command};
 
 pub struct Fig4Python{
@@ -39,8 +40,20 @@ impl Fig4Python{
                 |line|
                 {
                     let mut iter = line.split_ascii_whitespace();
-                    let beta: f64 = iter.next().unwrap().parse().unwrap();
-                    let mfpt: f64 = iter.next().unwrap().parse().unwrap();
+                    let beta: f64 = match iter.next().unwrap().parse(){
+                        Result::Ok(val) =>  val,
+                        Err(_) => {
+                            eprintln!("WARNING: BETA Parse Issue with {line}");
+                            f64::NAN
+                        }
+                    };
+                    let mfpt: f64  = match iter.next().unwrap().parse(){
+                        Result::Ok(val) =>  val,
+                        Err(_) => {
+                            eprintln!("WARNING: MFPT Parse Issue with {line}");
+                            f64::NAN
+                        }
+                    };
                     (beta, mfpt)
                 }
             ).collect_vec()
